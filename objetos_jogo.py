@@ -38,6 +38,7 @@ class Porta:
         pygame.draw.rect(tela, VERMELHO, (barra_x, 110, largura_barra, 25), border_radius=5)
         pygame.draw.rect(tela, VERDE, (barra_x, 110, largura_barra * pct_vida, 25), border_radius=5)
 
+
 class LojaUpgrades:
     def _init_(self):
         self.itens = [
@@ -85,6 +86,7 @@ class LojaUpgrades:
             surf_nome = fonte_pequena.render(item["nome"], False, BRANCO)
             surf_info = fonte_pequena.render(texto_info, False, AMARELO)
             tela.blit(surf_nome, (item["rect"].centerx - surf_nome.get_width() // 2, item["rect"].centery - 15))
+            tela.blit(surf_info, (item["rect"].centerx - surf_info.get_width() // 2, item["rect"].centery + 5))
             tela.blit(surf_info, (item["rect"].centerx - surf_info.get_width() // 2, item["rect"].centery + 5)) 
 
 
