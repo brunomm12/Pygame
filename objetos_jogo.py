@@ -1,6 +1,7 @@
 import random
 import pygame
 from config import *
+from collections import deque
 
 class Porta:
     def _init_(self, vida_maxima):
