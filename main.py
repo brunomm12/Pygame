@@ -102,6 +102,38 @@ def main():
 
                 pygame.draw.rect(tela, cor, btn, border_radius=10)
                 renderizar_texto_central(tela, nome, fonte_pequena, PRETO, btn.centerx, btn.centery)
+        elif estado == "CONTAGEM":
+            restante = 3 - int(time.time() - tempo_inicio_contagem)
+            labirinto.desenhar(tela)
+
+            overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 120))
+            tela.blit(overlay, (0, 0))
+
+            if restante > 0:
+                renderizar_texto_central(tela, "PREPARE-SE!", fonte_media, AMARELO, LARGURA // 2, ALTURA // 2 - 50)
+                renderizar_texto_central(tela, str(restante), fonte_grande, BRANCO, LARGURA // 2, ALTURA // 2 + 20)
+            else:
+                estado = "LABIRINTO"
+                tempo_ultimo_mov_inimigo = pygame.time.get_ticks()
+
+        elif estado == "LABIRINTO":
+            tempo_atual = pygame.time.get_ticks()
+
+            ganho = labirinto.checar_dinheiro()
+            if ganho > 0:
+                dinheiro += ganho
+
+            if tempo_atual - tempo_ultimo_mov_inimigo > intervalo_inimigo:
+                labirinto.mover_inimigo()
+                tempo_ultimo_mov_inimigo = tempo_atual
+
+            labirinto.desenhar(tela)
+            tela.blit(fonte_pequena.render("FUJA ATÉ A SAÍDA!", True, BRANCO), (10, 10))
+            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 10))
+
+            if labirinto.checar_morte() or labirinto.checar_saida():
+                estado = "MENU_DIFICULDADE"
 
         
         pygame.display.flip()
