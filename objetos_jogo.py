@@ -154,3 +154,79 @@ class LojaUpgrades:
             return True
         except (FileNotFoundError, pygame.error):
             return False
+
+
+
+    def resetar(self):
+        self.pos_x = 1
+        self.pos_y = 1
+        self.inimigo_x = 9
+        self.inimigo_y = 7
+        self.direcao_atual = 'baixo'
+        self.direcao_inimigo = 'baixo'
+        self.dinheiros = [(18, 1), (5, 3), (1, 9), (16, 11), (1, 13)]
+
+    def mover_jogador(self, dx, dy):
+        if dx == 1:
+            self.direcao_atual = 'direita'
+        elif dx == -1:
+            self.direcao_atual = 'esquerda'
+        elif dy == 1:
+            self.direcao_atual = 'baixo'
+        elif dy == -1:
+            self.direcao_atual = 'cima'
+
+        self.frame_atual = (self.frame_atual + 1) % 4
+
+        novo_x = self.pos_x + dx
+        novo_y = self.pos_y + dy
+        if self.matriz_mapa[novo_y][novo_x] != 'W':
+            self.pos_x = novo_x
+            self.pos_y = novo_y
+
+    def checar_dinheiro(self):
+        pos = (self.pos_x, self.pos_y)
+        if pos in self.dinheiros:
+            self.dinheiros.remove(pos)
+            return 5
+        return 0
+
+    def mover_inimigo(self):
+        if self.inimigo_x == self.pos_x and self.inimigo_y == self.pos_y:
+            return
+
+        fila = deque([(self.inimigo_x, self.inimigo_y, [])])
+        visitados = {(self.inimigo_x, self.inimigo_y)}
+        movimentos = [(0, -1), (0, 1), (-1, 0), (1, 0)]
+        caminho_escolhido = []
+
+        while fila:
+            atual_x, atual_y, caminho = fila.popleft()
+
+            if atual_x == self.pos_x and atual_y == self.pos_y:
+                caminho_escolhido = caminho
+                break
+
+            for dx, dy in movimentos:
+                nx, ny = atual_x + dx, atual_y + dy
+                if 0 <= ny < len(self.matriz_mapa) and 0 <= nx < len(self.matriz_mapa[0]):
+                    if self.matriz_mapa[ny][nx] != 'W' and (nx, ny) not in visitados:
+                        visitados.add((nx, ny))
+                        fila.append((nx, ny, caminho + [(nx, ny)]))
+
+        if caminho_escolhido:
+            prox_x, prox_y = caminho_escolhido[0]
+            dx = prox_x - self.inimigo_x
+            dy = prox_y - self.inimigo_y
+
+            if dx == 1:
+                self.direcao_inimigo = 'direita'
+            elif dx == -1:
+                self.direcao_inimigo = 'esquerda'
+            elif dy == 1:
+                self.direcao_inimigo = 'baixo'
+            elif dy == -1:
+                self.direcao_inimigo = 'cima'
+
+            self.frame_inimigo = (self.frame_inimigo + 1) % 4
+            self.inimigo_x, self.inimigo_y = prox_x, prox_y
