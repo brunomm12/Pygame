@@ -91,4 +91,66 @@ class LojaUpgrades:
             tela.blit(surf_info, (item["rect"].centerx - surf_info.get_width() // 2, item["rect"].centery + 5)) 
 
 
+        class FaseLabirinto:
+    def __init__(self):
+        self.tamanho_bloco = 40
+        self.matriz_mapa = [
+            "WWWWWWWWWWWWWWWWWWWW",
+            "W       W   W      W",
+            "W WWWWW W W W WWWW W",
+            "W     W   W   W    W",
+            "WWWWW WWWWWWWWW WWWW",
+            "W           W      W",
+            "W W WWWWWWW W WWWW W",
+            "W W       W W W    W",
+            "W WWWWWWW W W W WWWW",
+            "W       W W   W    W",
+            "W WWWWW W WWWWWWWW W",
+            "W     W W        W W",
+            "WWWWW W WWWWWWWW W W",
+            "W       W        E W",
+            "WWWWWWWWWWWWWWWWWWWW"
+        ]
 
+        self.cor_jogador = (50, 150, 255)
+        self.cor_inimigo = (255, 0, 0)
+
+        self.sprites = {'baixo': [], 'cima': [], 'esquerda': [], 'direita': []}
+        self.direcao_atual = 'baixo'
+        self.frame_atual = 0
+        self.tem_sprite = self._carregar_spritesheet("spritesheet.png", self.sprites, colunas_totais=8)
+
+        self.sprites_inimigo = {'baixo': [], 'cima': [], 'esquerda': [], 'direita': []}
+        self.direcao_inimigo = 'baixo'
+        self.frame_inimigo = 0
+        self.tem_sprite_inimigo = self._carregar_spritesheet("inimigo_spritesheet.png", self.sprites_inimigo, colunas_totais=8)
+
+        try:
+            img_din = pygame.image.load("dinheiro.png").convert_alpha()
+            borda = img_din.get_bounding_rect()
+            if borda.width > 0 and borda.height > 0:
+                img_din = img_din.subsurface(borda)
+            self.img_dinheiro = pygame.transform.scale(img_din, (38, 24))
+        except (FileNotFoundError, pygame.error):
+            self.img_dinheiro = None
+
+        self.resetar()
+
+    def _carregar_spritesheet(self, caminho, dicionario_destino, colunas_totais=8, linhas_totais=4):
+        try:
+            sheet = pygame.image.load(caminho).convert_alpha()
+            largura_sheet, altura_sheet = sheet.get_size()
+            largura_frame = largura_sheet // colunas_totais
+            altura_frame = altura_sheet // linhas_totais
+
+            direcoes = ['baixo', 'cima', 'esquerda', 'direita']
+
+            for linha in range(linhas_totais):
+                for coluna in range(4):
+                    rect = pygame.Rect(coluna * largura_frame, linha * altura_frame, largura_frame, altura_frame)
+                    img_cortada = sheet.subsurface(rect)
+                    img_redimensionada = pygame.transform.scale(img_cortada, (self.tamanho_bloco, self.tamanho_bloco))
+                    dicionario_destino[direcoes[linha]].append(img_redimensionada)
+            return True
+        except (FileNotFoundError, pygame.error):
+            return False
