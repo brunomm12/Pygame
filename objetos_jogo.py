@@ -230,3 +230,54 @@ class LojaUpgrades:
 
             self.frame_inimigo = (self.frame_inimigo + 1) % 4
             self.inimigo_x, self.inimigo_y = prox_x, prox_y
+
+
+
+
+
+    def checar_morte(self):
+        return self.pos_x == self.inimigo_x and self.pos_y == self.inimigo_y
+
+    def checar_saida(self):
+        return self.matriz_mapa[self.pos_y][self.pos_x] == 'E'
+
+    def desenhar(self, tela):
+        for linha_idx, linha in enumerate(self.matriz_mapa):
+            for col_idx, celula in enumerate(linha):
+                x = col_idx * self.tamanho_bloco
+                y = linha_idx * self.tamanho_bloco
+                rect = pygame.Rect(x, y, self.tamanho_bloco, self.tamanho_bloco)
+
+                if celula == 'W':
+                    pygame.draw.rect(tela, (80, 85, 90), rect)
+                    pygame.draw.rect(tela, (40, 45, 50), rect, 2)
+                    pygame.draw.line(tela, (40, 45, 50), (x, y + 20), (x + 40, y + 20), 2)
+                    pygame.draw.line(tela, (40, 45, 50), (x + 20, y), (x + 20, y + 20), 2)
+                elif celula == 'E':
+                    pygame.draw.rect(tela, (139, 69, 19), rect)
+                    pygame.draw.circle(tela, (255, 215, 0), (x + 10, y + 20), 4)
+
+        for dx, dy in self.dinheiros:
+            if self.img_dinheiro:
+                centro_x = dx * self.tamanho_bloco + self.tamanho_bloco // 2
+                centro_y = dy * self.tamanho_bloco + self.tamanho_bloco // 2
+                rect_din = self.img_dinheiro.get_rect(center=(centro_x, centro_y))
+                tela.blit(self.img_dinheiro, rect_din)
+            else:
+                px = dx * self.tamanho_bloco + 5
+                py = dy * self.tamanho_bloco + 10
+                pygame.draw.rect(tela, (0, 200, 0), (px, py, 30, 18), border_radius=3)
+
+        if self.tem_sprite_inimigo:
+            img_inimigo = self.sprites_inimigo[self.direcao_inimigo][self.frame_inimigo]
+            tela.blit(img_inimigo, (self.inimigo_x * self.tamanho_bloco, self.inimigo_y * self.tamanho_bloco))
+        else:
+            rect_inimigo = pygame.Rect(self.inimigo_x * self.tamanho_bloco, self.inimigo_y * self.tamanho_bloco, self.tamanho_bloco, self.tamanho_bloco)
+            pygame.draw.rect(tela, self.cor_inimigo, rect_inimigo)
+
+        if self.tem_sprite:
+            img_jogador = self.sprites[self.direcao_atual][self.frame_atual]
+            tela.blit(img_jogador, (self.pos_x * self.tamanho_bloco, self.pos_y * self.tamanho_bloco))
+        else:
+            rect_jogador = pygame.Rect(self.pos_x * self.tamanho_bloco, self.pos_y * self.tamanho_bloco, self.tamanho_bloco, self.tamanho_bloco)
+            pygame.draw.rect(tela, self.cor_jogador, rect_jogador)
