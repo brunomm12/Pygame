@@ -392,3 +392,81 @@ class FaseParkour:
         else:
             rect_jogador = pygame.Rect(self.pos_x * self.tamanho_bloco, self.pos_y * self.tamanho_bloco, self.tamanho_bloco, self.tamanho_bloco)
             pygame.draw.rect(tela, self.cor_jogador, rect_jogador)
+            
+        def atualizar(self, teclas, tempo_atual_ms):
+        ganho_dinheiro = 0
+        dx = 0
+
+        if teclas[pygame.K_a] or teclas[pygame.K_LEFT]:
+            dx = -self.vel_jogador
+            self.direcao = 'esquerda'
+        if teclas[pygame.K_d] or teclas[pygame.K_RIGHT]:
+            dx = self.vel_jogador
+            self.direcao = 'direita'
+
+        if (teclas[pygame.K_w] or teclas[pygame.K_UP] or teclas[pygame.K_SPACE]) and self.no_chao:
+            self.vel_y = self.forca_pulo
+            self.no_chao = False
+
+        if dx != 0:
+            self.contador_anim += 1
+            if self.contador_anim >= 6:
+                self.frame = (self.frame + 1) % 4
+                self.contador_anim = 0
+        else:
+            self.frame = 0
+
+        self.player_rect.x += dx
+        self.player_rect.left = max(0, self.player_rect.left)
+        self.player_rect.right = min(self.largura_mapa, self.player_rect.right)
+
+        for plat in self.plataformas:
+            if self.player_rect.colliderect(plat):
+                if dx > 0:
+                    self.player_rect.right = plat.left
+                elif dx < 0:
+                    self.player_rect.left = plat.right
+
+        self.vel_y = min(self.vel_y + self.gravidade, 16)
+        self.player_rect.y += self.vel_y
+        self.no_chao = False
+
+        for plat in self.plataformas:
+            if self.player_rect.colliderect(plat):
+                if self.vel_y > 0:
+                    self.player_rect.bottom = plat.top
+                    self.vel_y = 0
+                    self.no_chao = True
+                elif self.vel_y < 0:
+                    self.player_rect.top = plat.bottom
+                    self.vel_y = 0
+
+        if self.player_rect.top > ALTURA + 40:
+            self.vidas -= 1
+            self.player_rect.topleft = (60, 420)
+            self.vel_y = 0
+            self.invencivel_ate = tempo_atual_ms + 1500
+
+        for din in self.dinheiros[:]:
+            if self.player_rect.colliderect(din):
+                self.dinheiros.remove(din)
+                ganho_dinheiro += 3
+
+        for ini in self.inimigas:
+            ini["rect"].x += ini["vel"]
+            if ini["rect"].left <= ini["lim_esq"] or ini["rect"].right >= ini["lim_dir"]:
+                ini["vel"] *= -1
+            ini["anim"] += 1
+            if ini["anim"] >= 8:
+                ini["frame"] = (ini["frame"] + 1) % 4
+                ini["anim"] = 0
+
+            if self.player_rect.colliderect(ini["rect"]) and tempo_atual_ms > self.invencivel_ate:
+                self.vidas -= 1
+                self.invencivel_ate = tempo_atual_ms + 1500
+                self.vel_y = -8
+
+        self.camera_x = max(0, min(self.player_rect.centerx - LARGURA // 2, self.largura_mapa - LARGURA))
+        return ganho_dinheiro
+
+    
