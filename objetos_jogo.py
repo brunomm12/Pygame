@@ -278,7 +278,7 @@ class LojaUpgrades:
         if self.tem_sprite:
             img_jogador = self.sprites[self.direcao_atual][self.frame_atual]
 
-    class FaseParkour:
+class FaseParkour:
     def __init__(self):
         self.largura_mapa = 3200
         self.tamanho_sprite = 44
