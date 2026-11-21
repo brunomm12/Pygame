@@ -469,4 +469,53 @@ class FaseParkour:
         self.camera_x = max(0, min(self.player_rect.centerx - LARGURA // 2, self.largura_mapa - LARGURA))
         return ganho_dinheiro
 
-    
+        def checar_morte(self):
+        return self.vidas <= 0
+
+    def checar_saida(self):
+        return self.player_rect.colliderect(self.porta_saida)
+
+    def desenhar(self, tela, tempo_atual_ms):
+        if self.img_fundo:
+            offset = -(int(self.camera_x * 0.4) % LARGURA)
+            tela.blit(self.img_fundo, (offset, 0))
+            tela.blit(self.img_fundo, (offset + LARGURA, 0))
+        else:
+            tela.fill((25, 25, 35))
+
+        for plat in self.plataformas:
+            r = plat.move(-self.camera_x, 0)
+            pygame.draw.rect(tela, (90, 95, 105), r, border_radius=4)
+            pygame.draw.rect(tela, (40, 45, 55), r, 3, border_radius=4)
+            pygame.draw.rect(tela, (125, 130, 140), (r.x + 2, r.y + 2, r.width - 4, 6))
+
+        r_porta = self.porta_saida.move(-self.camera_x, 0)
+        pygame.draw.rect(tela, MARROM, r_porta, border_radius=6)
+        pygame.draw.rect(tela, (60, 30, 10), r_porta, 3, border_radius=6)
+        pygame.draw.circle(tela, AMARELO, (r_porta.right - 12, r_porta.centery), 5)
+
+        for din in self.dinheiros:
+            r_din = din.move(-self.camera_x, 0)
+            if self.img_dinheiro:
+                tela.blit(self.img_dinheiro, r_din)
+            else:
+                pygame.draw.rect(tela, VERDE, r_din, border_radius=3)
+
+        for ini in self.inimigas:
+            r_ini = ini["rect"].move(-self.camera_x, 0)
+            dir_ini = 'direita' if ini["vel"] > 0 else 'esquerda'
+            if self.tem_sprite_inimigo:
+                img = self.sprites_inimigo[dir_ini][ini["frame"]]
+                tela.blit(img, (r_ini.x - 5, r_ini.y))
+            else:
+                pygame.draw.rect(tela, VERMELHO, r_ini)
+
+        piscando = tempo_atual_ms < self.invencivel_ate and (tempo_atual_ms // 100) % 2 == 0
+        if not piscando:
+            r_jog = self.player_rect.move(-self.camera_x, 0)
+            if self.tem_sprite_jogador:
+                img = self.sprites_jogador[self.direcao][self.frame]
+                tela.blit(img, (r_jog.x - 5, r_jog.y))
+            else:
+                pygame.draw.rect(tela, (50, 150, 255), r_jog)
+
