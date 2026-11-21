@@ -277,6 +277,117 @@ class LojaUpgrades:
 
         if self.tem_sprite:
             img_jogador = self.sprites[self.direcao_atual][self.frame_atual]
+
+    class FaseParkour:
+    def __init__(self):
+        self.largura_mapa = 3200
+        self.tamanho_sprite = 44
+        self.gravidade = 0.7
+        self.forca_pulo = -14
+        self.vel_jogador = 5
+
+        self.img_fundo = None
+        for nome in ["fundo_parkour.png", "fundo_parkour.jpg", "fundo_parkour.jpeg"]:
+            try:
+                img = pygame.image.load(nome).convert()
+                self.img_fundo = pygame.transform.scale(img, (LARGURA, ALTURA))
+                break
+            except (FileNotFoundError, pygame.error):
+                continue
+
+        self.sprites_jogador = {'esquerda': [], 'direita': []}
+        self.tem_sprite_jogador = self._carregar_sprites_laterais("spritesheet.png", self.sprites_jogador)
+
+        self.sprites_inimigo = {'esquerda': [], 'direita': []}
+        self.tem_sprite_inimigo = self._carregar_sprites_laterais("inimigo_spritesheet.png", self.sprites_inimigo)
+
+        try:
+            img_din = pygame.image.load("dinheiro.png").convert_alpha()
+            borda = img_din.get_bounding_rect()
+            if borda.width > 0 and borda.height > 0:
+                img_din = img_din.subsurface(borda)
+            self.img_dinheiro = pygame.transform.scale(img_din, (36, 22))
+        except (FileNotFoundError, pygame.error):
+            self.img_dinheiro = None
+
+        self.plataformas = [
+            pygame.Rect(0, 500, 320, 100),
+            pygame.Rect(420, 460, 220, 30),
+            pygame.Rect(730, 400, 260, 30),
+            pygame.Rect(1080, 480, 280, 120),
+            pygame.Rect(1450, 420, 220, 30),
+            pygame.Rect(1760, 350, 260, 30),
+            pygame.Rect(2110, 450, 260, 150),
+            pygame.Rect(2460, 390, 200, 30),
+            pygame.Rect(2750, 460, 450, 140),
+        ]
+
+        self.porta_saida = pygame.Rect(3080, 370, 55, 90)
+        self.resetar("Fácil")
+
+    def _carregar_sprites_laterais(self, caminho, destino):
+        try:
+            sheet = pygame.image.load(caminho).convert_alpha()
+            largura_sheet, altura_sheet = sheet.get_size()
+            largura_frame = largura_sheet // 8
+            altura_frame = altura_sheet // 4
+            for linha, direcao in [(2, 'esquerda'), (3, 'direita')]:
+                for coluna in range(4):
+                    rect = pygame.Rect(coluna * largura_frame, linha * altura_frame, largura_frame, altura_frame)
+                    img = pygame.transform.scale(sheet.subsurface(rect), (self.tamanho_sprite, self.tamanho_sprite))
+                    destino[direcao].append(img)
+            return True
+        except (FileNotFoundError, pygame.error):
+            return False
+
+    def resetar(self, dificuldade="Fácil"):
+        self.vidas = 3
+        self.player_rect = pygame.Rect(60, 420, 34, 44)
+        self.vel_y = 0
+        self.no_chao = False
+        self.direcao = 'direita'
+        self.frame = 0
+        self.contador_anim = 0
+        self.invencivel_ate = 0
+        self.camera_x = 0
+
+        posicoes_dinheiro = [
+            (250, 460), (520, 420), (850, 360), (1200, 440),
+            (1550, 380), (1880, 310), (2230, 410), (2550, 350)
+        ]
+        self.dinheiros = [pygame.Rect(x, y, 36, 22) for x, y in posicoes_dinheiro]
+
+        todas_inimigas = [
+            (480, 416, 420, 606, 2),
+            (780, 356, 730, 956, 2),
+            (1130, 436, 1080, 1326, 2.5),
+            (1240, 436, 1080, 1326, -2),
+            (1500, 376, 1450, 1636, 2),
+            (1820, 306, 1760, 1986, 2.5),
+            (2150, 406, 2110, 2336, 2),
+            (2260, 406, 2110, 2336, -2.5),
+            (2500, 346, 2460, 2626, 2),
+            (2830, 416, 2750, 3020, 3),
+        ]
+
+        if dificuldade == "Fácil":
+            indices = [0, 4, 9]
+        elif dificuldade == "Média":
+            indices = [0, 1, 2, 5, 6, 9]
+        else:
+            indices = list(range(10))
+
+        self.inimigas = []
+        for i in indices:
+            x, y, lim_esq, lim_dir, vel = todas_inimigas[i]
+            self.inimigas.append({
+                "rect": pygame.Rect(x, y, 34, 44),
+                "lim_esq": lim_esq,
+                "lim_dir": lim_dir,
+                "vel": vel,
+                "frame": 0,
+                "anim": 0
+            })
             tela.blit(img_jogador, (self.pos_x * self.tamanho_bloco, self.pos_y * self.tamanho_bloco))
         else:
             rect_jogador = pygame.Rect(self.pos_x * self.tamanho_bloco, self.pos_y * self.tamanho_bloco, self.tamanho_bloco, self.tamanho_bloco)
