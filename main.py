@@ -1,350 +1,527 @@
-import json
-import os
-import sys
-import time
+from collections import deque
+import random
 import pygame
 from config import *
-from objetos_jogo import Porta, LojaUpgrades, FaseLabirinto, FaseParkour
 
 
-CORACAO_MATRIZ = [
-    " 11   11 ",
-    "1221 1221",
-    "122212221",
-    "122222221",
-    " 1222221 ",
-    "  12221  ",
-    "   121   ",
-    "    1    ",
-]
+class Porta:
+    def __init__(self, vida_maxima):
+        self.vida_maxima = vida_maxima
+        self.vida_atual = vida_maxima
+        self.rect_base = pygame.Rect(LARGURA // 2 - 100, 130, 200, 310)
+        self.rect = self.rect_base.copy()
+        self.tremer_x = 0
+        self.tremer_y = 0
+
+    def configurar_dificuldade(self, nova_vida_maxima):
+        self.vida_maxima = nova_vida_maxima
+        self.vida_atual = nova_vida_maxima
+
+    def receber_dano(self, dano):
+        self.vida_atual = max(0, self.vida_atual - dano)
+        self.rect = self.rect_base.inflate(-15, -15)
+        self.tremer_x = random.randint(-6, 6)
+        self.tremer_y = random.randint(-6, 6)
+
+    def resetar_impacto(self):
+        self.rect = self.rect_base.copy()
+        self.tremer_x = 0
+        self.tremer_y = 0
+
+    def desenhar(self, tela):
+        rect_desenho = self.rect.move(self.tremer_x, self.tremer_y)
+        pygame.draw.rect(tela, MARROM, rect_desenho, border_radius=5)
+        pygame.draw.circle(tela, BRANCO, (rect_desenho.right - 25, rect_desenho.centery), 10)
+
+        largura_barra = 400
+        pct_vida = max(self.vida_atual / self.vida_maxima, 0)
+        barra_x = LARGURA // 2 - largura_barra // 2
+        pygame.draw.rect(tela, PRETO, (barra_x - 3, 107, largura_barra + 6, 31), border_radius=6)
+        pygame.draw.rect(tela, VERMELHO, (barra_x, 110, largura_barra, 25), border_radius=5)
+        pygame.draw.rect(tela, VERDE, (barra_x, 110, largura_barra * pct_vida, 25), border_radius=5)
 
 
-def desenhar_coracao_pixel(tela, x, y, cheio=True, tam_px=3):
-    cor_borda = (0, 0, 0) if cheio else (80, 80, 80)
-    cor_miolo = (220, 20, 40) if cheio else (15, 15, 15)
+class LojaUpgrades:
+    def __init__(self):
+        self.itens = [
+            {"nome": "Tênis Novo", "custo": 10, "dano": 1, "tipo": "dano", "rect": pygame.Rect(20, 500, 175, 70)},
+            {"nome": "Soco Inglês", "custo": 50, "dano": 5, "tipo": "dano", "rect": pygame.Rect(215, 500, 175, 70)},
+            {"nome": "Pé de Cabra", "custo": 200, "dano": 25, "tipo": "dano", "rect": pygame.Rect(410, 500, 175, 70)},
+            {"nome": "Auto-Chute", "custo": 50, "dano": 0, "tipo": "auto", "comprado": False, "rect": pygame.Rect(605, 500, 175, 70)}
+        ]
 
-    for linha_idx, linha in enumerate(CORACAO_MATRIZ):
-        for col_idx, char in enumerate(linha):
-            if char == "1":
-                pygame.draw.rect(tela, cor_borda, (x + col_idx * tam_px, y + linha_idx * tam_px, tam_px, tam_px))
-            elif char == "2":
-                pygame.draw.rect(tela, cor_miolo, (x + col_idx * tam_px, y + linha_idx * tam_px, tam_px, tam_px))
+    def resetar_precos(self):
+        self.itens[0]["custo"] = 10
+        self.itens[1]["custo"] = 50
+        self.itens[2]["custo"] = 200
+        self.itens[3]["comprado"] = False
 
+    def tentar_comprar(self, mouse_pos, clique, dinheiro, dano_atual, tem_auto_clique, som_caixa=None):
+        for item in self.itens:
+            if item["rect"].collidepoint(mouse_pos) and clique:
+                if item["tipo"] == "auto":
+                    if not item["comprado"] and dinheiro >= item["custo"]:
+                        dinheiro -= item["custo"]
+                        item["comprado"] = True
+                        tem_auto_clique = True
+                        if som_caixa:
+                            som_caixa.play()
+                elif dinheiro >= item["custo"]:
+                    dinheiro -= item["custo"]
+                    dano_atual += item["dano"]
+                    item["custo"] = int(item["custo"] * 1.5)
+                    if som_caixa:
+                        som_caixa.play()
+        return dinheiro, dano_atual, tem_auto_clique
 
-def formatar_timer(segundos):
-    segundos = max(0, int(segundos))
-    minutos = segundos // 60
-    segs = segundos % 60
-    return f"{minutos:02d}:{segs:02d}"
-
-
-def formatar_tempo_ranking(segundos):
-    minutos = int(segundos // 60)
-    segs = segundos % 60
-    return f"{minutos:02d}:{segs:04.1f}"
-
-
-def carregar_tierlist():
-    if os.path.exists(ARQUIVO_TIERLIST):
-        try:
-            with open(ARQUIVO_TIERLIST, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            return []
-    return []
-
-
-def salvar_tierlist(nome, tempo, dificuldade):
-    rank = carregar_tierlist()
-    rank.append({"nome": nome, "tempo": round(tempo, 3), "dificuldade": dificuldade})
-    rank = sorted(rank, key=lambda x: x["tempo"])
-    with open(ARQUIVO_TIERLIST, "w", encoding="utf-8") as f:
-        json.dump(rank, f)
-
-
-def renderizar_texto_central(tela, texto, fonte, cor, x, y):
-    surf = fonte.render(texto, True, cor)
-    rect = surf.get_rect(center=(x, y))
-    tela.blit(surf, rect)
-
-
-def main():
-    pygame.init()
-    pygame.key.set_repeat(200, 120)
-
-    tela = pygame.display.set_mode((LARGURA, ALTURA))
-    pygame.display.set_caption("Lorenzo Magnus - Em Busca da Saída")
-    clock = pygame.time.Clock()
-
-    fonte_pequena = pygame.font.SysFont("consolas", 20, bold=True)
-    fonte_media = pygame.font.SysFont("consolas", 28, bold=True)
-    fonte_grande = pygame.font.SysFont("consolas", 48, bold=True)
-
-    porta = Porta(vida_maxima=2000)
-    loja = LojaUpgrades()
-    labirinto = FaseLabirinto()
-    parkour = FaseParkour()
-
-    btn_facil = pygame.Rect(LARGURA // 2 - 140, 250, 280, 60)
-    btn_media = pygame.Rect(LARGURA // 2 - 140, 330, 280, 60)
-    btn_dificil = pygame.Rect(LARGURA // 2 - 140, 410, 280, 60)
-
-    estado = "MENU_NOME"
-    nome_jogador = ""
-    dificuldade_atual = ""
-    dinheiro = 0
-    dano_por_hit = 1
-    tempo_inicio = 0
-    tempo_limite = 120
-    tempo_final = 0
-    motivo_game_over = "VOCÊ PERDEU!"
-
-    intervalo_inimigo = 500
-    tempo_ultimo_mov_inimigo = 0
-    tempo_inicio_contagem = 0
-    tem_auto_clique = False
-    tempo_ultimo_auto_clique = 0
-
-    while True:
-        tela.fill(PRETO)
-        mouse_pos = pygame.mouse.get_pos()
-        clique = False
-
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
-                clique = True
-
-            if evento.type == pygame.KEYDOWN:
-                if estado == "LABIRINTO":
-                    if evento.key in [pygame.K_w, pygame.K_UP]:
-                        labirinto.mover_jogador(0, -1)
-                    elif evento.key in [pygame.K_s, pygame.K_DOWN]:
-                        labirinto.mover_jogador(0, 1)
-                    elif evento.key in [pygame.K_a, pygame.K_LEFT]:
-                        labirinto.mover_jogador(-1, 0)
-                    elif evento.key in [pygame.K_d, pygame.K_RIGHT]:
-                        labirinto.mover_jogador(1, 0)
-
-                elif estado == "MENU_NOME":
-                    if evento.key == pygame.K_RETURN and len(nome_jogador) > 0:
-                        estado = "MENU_DIFICULDADE"
-                    elif evento.key == pygame.K_BACKSPACE:
-                        nome_jogador = nome_jogador[:-1]
-                    elif len(nome_jogador) < 12 and evento.unicode.isprintable():
-                        nome_jogador += evento.unicode
-
-                elif estado == "TIERLIST":
-                    if evento.key in [pygame.K_RETURN, pygame.K_SPACE]:
-                        estado = "MENU_NOME"
-                        nome_jogador = ""
-
-                elif estado == "GAME_OVER":
-                    if evento.key in [pygame.K_RETURN, pygame.K_SPACE]:
-                        estado = "MENU_DIFICULDADE"
-
-        if estado == "MENU_NOME":
-            renderizar_texto_central(tela, "LORENZO MAGNUS", fonte_grande, BRANCO, LARGURA // 2, 120)
-            renderizar_texto_central(tela, "EM BUSCA DA SAÍDA", fonte_media, AMARELO, LARGURA // 2, 175)
-            renderizar_texto_central(tela, "Digite seu Nickname:", fonte_media, CINZA, LARGURA // 2, 250)
-
-            caixa_texto = pygame.Rect(LARGURA // 2 - 150, 300, 300, 50)
-            pygame.draw.rect(tela, BRANCO, caixa_texto, 2, border_radius=8)
-            renderizar_texto_central(tela, nome_jogador, fonte_media, AMARELO, LARGURA // 2, 325)
-
-            if len(nome_jogador) > 0:
-                renderizar_texto_central(tela, "Pressione ENTER para continuar", fonte_pequena, VERDE, LARGURA // 2, 400)
-
-        elif estado == "MENU_DIFICULDADE":
-            renderizar_texto_central(tela, f"Jogador: {nome_jogador}", fonte_media, BRANCO, LARGURA // 2, 120)
-            renderizar_texto_central(tela, "Escolha a Dificuldade:", fonte_media, CINZA, LARGURA // 2, 180)
-
-            for btn, nome, hp, cor, vel_ms, limite_seg in [
-                (btn_facil, "Fácil (2:00)", 500, VERDE, 500, 120),
-                (btn_media, "Média (2:30)", 2000, AMARELO, 250, 150),
-                (btn_dificil, "Difícil (3:15)", 10000, VERMELHO, 167, 195)
-            ]:
-                if btn.collidepoint(mouse_pos):
-                    pygame.draw.rect(tela, BRANCO, btn.inflate(6, 6), border_radius=10)
-                    if clique:
-                        dificuldade_atual = nome.split(" ")[0]
-                        intervalo_inimigo = vel_ms
-                        tempo_limite = limite_seg
-                        porta.configurar_dificuldade(hp)
-                        dinheiro = 0
-                        dano_por_hit = 1
-                        loja.resetar_precos()
-                        tem_auto_clique = False
-
-                        labirinto.resetar()
-                        parkour.resetar(dificuldade_atual)
-                        estado = "CONTAGEM"
-                        tempo_inicio_contagem = time.time()
-
-                pygame.draw.rect(tela, cor, btn, border_radius=10)
-                renderizar_texto_central(tela, nome, fonte_pequena, PRETO, btn.centerx, btn.centery)
-
-        elif estado == "CONTAGEM":
-            restante = 3 - int(time.time() - tempo_inicio_contagem)
-            labirinto.desenhar(tela)
-
-            overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 120))
-            tela.blit(overlay, (0, 0))
-
-            if restante > 0:
-                renderizar_texto_central(tela, "PREPARE-SE!", fonte_media, AMARELO, LARGURA // 2, ALTURA // 2 - 50)
-                renderizar_texto_central(tela, str(restante), fonte_grande, BRANCO, LARGURA // 2, ALTURA // 2 + 20)
+    def desenhar(self, tela, mouse_pos, dinheiro, fonte_pequena):
+        for item in self.itens:
+            if item["tipo"] == "auto" and item["comprado"]:
+                cor_botao = (0, 160, 0)
+                texto_info = "ATIVADO (10/s)"
             else:
-                estado = "LABIRINTO"
-                tempo_inicio = time.time()
-                tempo_ultimo_mov_inimigo = pygame.time.get_ticks()
+                pode_comprar = dinheiro >= item["custo"]
+                cor_botao = AZUL if pode_comprar else CINZA
+                texto_info = f"R$ {item['custo']} | 10/seg" if item["tipo"] == "auto" else f"R$ {item['custo']} | +{item['dano']}"
 
-        elif estado == "LABIRINTO":
-            tempo_atual = pygame.time.get_ticks()
-            tempo_decorrido = time.time() - tempo_inicio
-            tempo_restante = tempo_limite - tempo_decorrido
+            if item["rect"].collidepoint(mouse_pos):
+                pygame.draw.rect(tela, BRANCO, item["rect"].inflate(4, 4), border_radius=10)
 
-            ganho = labirinto.checar_dinheiro()
-            if ganho > 0:
-                dinheiro += ganho
+            pygame.draw.rect(tela, cor_botao, item["rect"], border_radius=10)
 
-            if tempo_atual - tempo_ultimo_mov_inimigo > intervalo_inimigo:
-                labirinto.mover_inimigo()
-                tempo_ultimo_mov_inimigo = tempo_atual
-
-            labirinto.desenhar(tela)
-
-            cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
-            tela.blit(fonte_pequena.render("FUJA ATÉ A SAÍDA!", True, BRANCO), (10, 10))
-            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA // 2, 20)
-            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 10))
-
-            if tempo_restante <= 0:
-                motivo_game_over = "TEMPO ESGOTADO!"
-                estado = "GAME_OVER"
-            elif labirinto.checar_morte():
-                motivo_game_over = "VOCÊ FOI PEGO!"
-                estado = "GAME_OVER"
-            elif labirinto.checar_saida():
-                parkour.resetar(dificuldade_atual)
-                estado = "PARKOUR"
-
-        elif estado == "PARKOUR":
-            tempo_atual_ms = pygame.time.get_ticks()
-            tempo_decorrido = time.time() - tempo_inicio
-            tempo_restante = tempo_limite - tempo_decorrido
-
-            teclas = pygame.key.get_pressed()
-            ganho = parkour.atualizar(teclas, tempo_atual_ms)
-            if ganho > 0:
-                dinheiro += ganho
-
-            parkour.desenhar(tela, tempo_atual_ms)
-
-            for i in range(3):
-                desenhar_coracao_pixel(tela, 20 + i * 36, 16, cheio=(i < parkour.vidas), tam_px=3)
-
-            cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
-            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA // 2, 24)
-            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 18))
-            renderizar_texto_central(tela, "A/D: Correr | W/ESPAÇO: Pular", fonte_pequena, BRANCO, LARGURA // 2, 52)
-
-            if tempo_restante <= 0:
-                motivo_game_over = "TEMPO ESGOTADO!"
-                estado = "GAME_OVER"
-            elif parkour.checar_morte():
-                motivo_game_over = "VOCÊ PERDEU!"
-                estado = "GAME_OVER"
-            elif parkour.checar_saida():
-                estado = "JOGO"
-
-        elif estado == "GAME_OVER":
-            renderizar_texto_central(tela, motivo_game_over, fonte_grande, VERMELHO, LARGURA // 2, ALTURA // 2 - 40)
-            renderizar_texto_central(tela, "Pressione ENTER para tentar novamente", fonte_pequena, CINZA, LARGURA // 2, ALTURA // 2 + 40)
-
-        elif estado == "JOGO":
-            tempo_decorrido = time.time() - tempo_inicio
-            tempo_restante = tempo_limite - tempo_decorrido
-            tempo_atual_ms = pygame.time.get_ticks()
-
-            bateu_na_porta = False
-
-            # Clique manual do jogador
-            if porta.rect.collidepoint(mouse_pos) and clique:
-                porta.receber_dano(dano_por_hit)
-                dinheiro += dano_por_hit
-                bateu_na_porta = True
-
-            # Auto-Chute automático (10 cliques/s = a cada 100 ms)
-            if tem_auto_clique and tempo_atual_ms - tempo_ultimo_auto_clique >= 100:
-                porta.receber_dano(dano_por_hit)
-                dinheiro += dano_por_hit
-                tempo_ultimo_auto_clique = tempo_atual_ms
-                bateu_na_porta = True
-
-            if not bateu_na_porta:
-                porta.resetar_impacto()
-
-            if tempo_restante <= 0:
-                motivo_game_over = "TEMPO ESGOTADO!"
-                estado = "GAME_OVER"
-            elif porta.vida_atual <= 0:
-                tempo_final = tempo_decorrido
-                salvar_tierlist(nome_jogador, tempo_final, dificuldade_atual)
-                estado = "TIERLIST"
-
-            porta.desenhar(tela)
-
-            cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
-            tela.blit(fonte_pequena.render(f"Jogador: {nome_jogador}", True, BRANCO), (20, 20))
-            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (20, 50))
-            tela.blit(fonte_pequena.render(f"Dano/Hit: {dano_por_hit}", True, AMARELO), (20, 80))
-            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA - 90, 35)
-
-            dinheiro, dano_por_hit, tem_auto_clique = loja.tentar_comprar(
-                mouse_pos, clique, dinheiro, dano_por_hit, tem_auto_clique
-            )
-            loja.desenhar(tela, mouse_pos, dinheiro, fonte_pequena)
-
-        elif estado == "TIERLIST":
-            renderizar_texto_central(tela, "HALL DA FAMA", fonte_grande, BRANCO, LARGURA // 2, 65)
-            rank = carregar_tierlist()
-
-            rank_facil = [r for r in rank if r.get('dificuldade', 'Média') == 'Fácil'][:5]
-            rank_media = [r for r in rank if r.get('dificuldade', 'Média') == 'Média'][:5]
-            rank_dificil = [r for r in rank if r.get('dificuldade', 'Média') == 'Difícil'][:5]
-
-            renderizar_texto_central(tela, "FÁCIL", fonte_media, VERDE, 165, 145)
-            renderizar_texto_central(tela, "MÉDIA", fonte_media, AMARELO, LARGURA // 2, 145)
-            renderizar_texto_central(tela, "DIFÍCIL", fonte_media, VERMELHO, LARGURA - 165, 145)
-
-            colunas = [(rank_facil, 165), (rank_media, LARGURA // 2), (rank_dificil, LARGURA - 165)]
-
-            for lista, x_pos in colunas:
-                y_pos = 195
-                for i, registro in enumerate(lista):
-                    tempo_fmt = formatar_tempo_ranking(registro['tempo'])
-                    texto_rank = f"{i + 1}º {registro['nome']} ({tempo_fmt})"
-
-                    eh_run_atual = (
-                        registro['nome'] == nome_jogador
-                        and registro['tempo'] == round(tempo_final, 3)
-                        and registro.get('dificuldade', 'Média') == dificuldade_atual
-                    )
-
-                    cor = VERDE if eh_run_atual else BRANCO
-                    renderizar_texto_central(tela, texto_rank, fonte_pequena, cor, x_pos, y_pos)
-                    y_pos += 35
-
-            renderizar_texto_central(tela, "Pressione ENTER para jogar novamente", fonte_pequena, BRANCO, LARGURA // 2, 565)
-
-        pygame.display.flip()
-        clock.tick(FPS)
+            surf_nome = fonte_pequena.render(item["nome"], False, BRANCO)
+            surf_info = fonte_pequena.render(texto_info, False, AMARELO)
+            tela.blit(surf_nome, (item["rect"].centerx - surf_nome.get_width() // 2, item["rect"].centery - 15))
+            tela.blit(surf_info, (item["rect"].centerx - surf_info.get_width() // 2, item["rect"].centery + 5))
 
 
-if __name__ == "__main__":
-    main()
+class FaseLabirinto:
+    def __init__(self):
+        self.tamanho_bloco = 40
+        self.matriz_mapa = [
+            "WWWWWWWWWWWWWWWWWWWW",
+            "W       W   W      W",
+            "W WWWWW W W W WWWW W",
+            "W     W   W   W    W",
+            "WWWWW WWWWWWWWW WWWW",
+            "W           W      W",
+            "W W WWWWWWW W WWWW W",
+            "W W       W W W    W",
+            "W WWWWWWW W W W WWWW",
+            "W       W W   W    W",
+            "W WWWWW W WWWWWWWW W",
+            "W     W W        W W",
+            "WWWWW W WWWWWWWW W W",
+            "W       W        E W",
+            "WWWWWWWWWWWWWWWWWWWW"
+        ]
+
+        self.cor_jogador = (50, 150, 255)
+        self.cor_inimigo = (255, 0, 0)
+
+        self.sprites = {'baixo': [], 'cima': [], 'esquerda': [], 'direita': []}
+        self.direcao_atual = 'baixo'
+        self.frame_atual = 0
+        self.tem_sprite = self._carregar_spritesheet("spritesheet.png", self.sprites, colunas_totais=8)
+
+        self.sprites_inimigo = {'baixo': [], 'cima': [], 'esquerda': [], 'direita': []}
+        self.direcao_inimigo = 'baixo'
+        self.frame_inimigo = 0
+        self.tem_sprite_inimigo = self._carregar_spritesheet("inimigo_spritesheet.png", self.sprites_inimigo, colunas_totais=8)
+
+        try:
+            img_din = pygame.image.load("dinheiro.png").convert_alpha()
+            borda = img_din.get_bounding_rect()
+            if borda.width > 0 and borda.height > 0:
+                img_din = img_din.subsurface(borda)
+            self.img_dinheiro = pygame.transform.scale(img_din, (38, 24))
+        except (FileNotFoundError, pygame.error):
+            self.img_dinheiro = None
+
+        self.resetar()
+
+    def _carregar_spritesheet(self, caminho, dicionario_destino, colunas_totais=8, linhas_totais=4):
+        try:
+            sheet = pygame.image.load(caminho).convert_alpha()
+            largura_sheet, altura_sheet = sheet.get_size()
+            largura_frame = largura_sheet // colunas_totais
+            altura_frame = altura_sheet // linhas_totais
+
+            direcoes = ['baixo', 'cima', 'esquerda', 'direita']
+
+            for linha in range(linhas_totais):
+                for coluna in range(4):
+                    rect = pygame.Rect(coluna * largura_frame, linha * altura_frame, largura_frame, altura_frame)
+                    img_cortada = sheet.subsurface(rect)
+                    img_redimensionada = pygame.transform.scale(img_cortada, (self.tamanho_bloco, self.tamanho_bloco))
+                    dicionario_destino[direcoes[linha]].append(img_redimensionada)
+            return True
+        except (FileNotFoundError, pygame.error):
+            return False
+
+    def resetar(self):
+        self.pos_x = 1
+        self.pos_y = 1
+        self.inimigo_x = 9
+        self.inimigo_y = 7
+        self.direcao_atual = 'baixo'
+        self.direcao_inimigo = 'baixo'
+        self.dinheiros = [(18, 1), (5, 3), (1, 9), (16, 11), (1, 13)]
+
+    def mover_jogador(self, dx, dy):
+        if dx == 1:
+            self.direcao_atual = 'direita'
+        elif dx == -1:
+            self.direcao_atual = 'esquerda'
+        elif dy == 1:
+            self.direcao_atual = 'baixo'
+        elif dy == -1:
+            self.direcao_atual = 'cima'
+
+        self.frame_atual = (self.frame_atual + 1) % 4
+
+        novo_x = self.pos_x + dx
+        novo_y = self.pos_y + dy
+        if self.matriz_mapa[novo_y][novo_x] != 'W':
+            self.pos_x = novo_x
+            self.pos_y = novo_y
+
+    def checar_dinheiro(self):
+        pos = (self.pos_x, self.pos_y)
+        if pos in self.dinheiros:
+            self.dinheiros.remove(pos)
+            return 5
+        return 0
+
+    def mover_inimigo(self):
+        if self.inimigo_x == self.pos_x and self.inimigo_y == self.pos_y:
+            return
+
+        fila = deque([(self.inimigo_x, self.inimigo_y, [])])
+        visitados = {(self.inimigo_x, self.inimigo_y)}
+        movimentos = [(0, -1), (0, 1), (-1, 0), (1, 0)]
+        caminho_escolhido = []
+
+        while fila:
+            atual_x, atual_y, caminho = fila.popleft()
+
+            if atual_x == self.pos_x and atual_y == self.pos_y:
+                caminho_escolhido = caminho
+                break
+
+            for dx, dy in movimentos:
+                nx, ny = atual_x + dx, atual_y + dy
+                if 0 <= ny < len(self.matriz_mapa) and 0 <= nx < len(self.matriz_mapa[0]):
+                    if self.matriz_mapa[ny][nx] != 'W' and (nx, ny) not in visitados:
+                        visitados.add((nx, ny))
+                        fila.append((nx, ny, caminho + [(nx, ny)]))
+
+        if caminho_escolhido:
+            prox_x, prox_y = caminho_escolhido[0]
+            dx = prox_x - self.inimigo_x
+            dy = prox_y - self.inimigo_y
+
+            if dx == 1:
+                self.direcao_inimigo = 'direita'
+            elif dx == -1:
+                self.direcao_inimigo = 'esquerda'
+            elif dy == 1:
+                self.direcao_inimigo = 'baixo'
+            elif dy == -1:
+                self.direcao_inimigo = 'cima'
+
+            self.frame_inimigo = (self.frame_inimigo + 1) % 4
+            self.inimigo_x, self.inimigo_y = prox_x, prox_y
+
+    def checar_morte(self):
+        return self.pos_x == self.inimigo_x and self.pos_y == self.inimigo_y
+
+    def checar_saida(self):
+        return self.matriz_mapa[self.pos_y][self.pos_x] == 'E'
+
+    def desenhar(self, tela):
+        for linha_idx, linha in enumerate(self.matriz_mapa):
+            for col_idx, celula in enumerate(linha):
+                x = col_idx * self.tamanho_bloco
+                y = linha_idx * self.tamanho_bloco
+                rect = pygame.Rect(x, y, self.tamanho_bloco, self.tamanho_bloco)
+
+                if celula == 'W':
+                    pygame.draw.rect(tela, (80, 85, 90), rect)
+                    pygame.draw.rect(tela, (40, 45, 50), rect, 2)
+                    pygame.draw.line(tela, (40, 45, 50), (x, y + 20), (x + 40, y + 20), 2)
+                    pygame.draw.line(tela, (40, 45, 50), (x + 20, y), (x + 20, y + 20), 2)
+                elif celula == 'E':
+                    pygame.draw.rect(tela, (139, 69, 19), rect)
+                    pygame.draw.circle(tela, (255, 215, 0), (x + 10, y + 20), 4)
+
+        for dx, dy in self.dinheiros:
+            if self.img_dinheiro:
+                centro_x = dx * self.tamanho_bloco + self.tamanho_bloco // 2
+                centro_y = dy * self.tamanho_bloco + self.tamanho_bloco // 2
+                rect_din = self.img_dinheiro.get_rect(center=(centro_x, centro_y))
+                tela.blit(self.img_dinheiro, rect_din)
+            else:
+                px = dx * self.tamanho_bloco + 5
+                py = dy * self.tamanho_bloco + 10
+                pygame.draw.rect(tela, (0, 200, 0), (px, py, 30, 18), border_radius=3)
+
+        if self.tem_sprite_inimigo:
+            img_inimigo = self.sprites_inimigo[self.direcao_inimigo][self.frame_inimigo]
+            tela.blit(img_inimigo, (self.inimigo_x * self.tamanho_bloco, self.inimigo_y * self.tamanho_bloco))
+        else:
+            rect_inimigo = pygame.Rect(self.inimigo_x * self.tamanho_bloco, self.inimigo_y * self.tamanho_bloco, self.tamanho_bloco, self.tamanho_bloco)
+            pygame.draw.rect(tela, self.cor_inimigo, rect_inimigo)
+
+        if self.tem_sprite:
+            img_jogador = self.sprites[self.direcao_atual][self.frame_atual]
+            tela.blit(img_jogador, (self.pos_x * self.tamanho_bloco, self.pos_y * self.tamanho_bloco))
+        else:
+            rect_jogador = pygame.Rect(self.pos_x * self.tamanho_bloco, self.pos_y * self.tamanho_bloco, self.tamanho_bloco, self.tamanho_bloco)
+            pygame.draw.rect(tela, self.cor_jogador, rect_jogador)
+
+
+class FaseParkour:
+    def __init__(self):
+        self.largura_mapa = 3200
+        self.tamanho_sprite = 44
+        self.gravidade = 0.7
+        self.forca_pulo = -14
+        self.vel_jogador = 5
+
+        self.img_fundo = None
+        for nome in ["fundo_parkour.png", "fundo_parkour.jpg", "fundo_parkour.jpeg"]:
+            try:
+                img = pygame.image.load(nome).convert()
+                self.img_fundo = pygame.transform.scale(img, (LARGURA, ALTURA))
+                break
+            except (FileNotFoundError, pygame.error):
+                continue
+
+        self.sprites_jogador = {'esquerda': [], 'direita': []}
+        self.tem_sprite_jogador = self._carregar_sprites_laterais("spritesheet.png", self.sprites_jogador)
+
+        self.sprites_inimigo = {'esquerda': [], 'direita': []}
+        self.tem_sprite_inimigo = self._carregar_sprites_laterais("inimigo_spritesheet.png", self.sprites_inimigo)
+
+        try:
+            img_din = pygame.image.load("dinheiro.png").convert_alpha()
+            borda = img_din.get_bounding_rect()
+            if borda.width > 0 and borda.height > 0:
+                img_din = img_din.subsurface(borda)
+            self.img_dinheiro = pygame.transform.scale(img_din, (36, 22))
+        except (FileNotFoundError, pygame.error):
+            self.img_dinheiro = None
+
+        self.plataformas = [
+            pygame.Rect(0, 500, 320, 100),
+            pygame.Rect(420, 460, 220, 30),
+            pygame.Rect(730, 400, 260, 30),
+            pygame.Rect(1080, 480, 280, 120),
+            pygame.Rect(1450, 420, 220, 30),
+            pygame.Rect(1760, 350, 260, 30),
+            pygame.Rect(2110, 450, 260, 150),
+            pygame.Rect(2460, 390, 200, 30),
+            pygame.Rect(2750, 460, 450, 140),
+        ]
+
+        self.porta_saida = pygame.Rect(3080, 370, 55, 90)
+        self.resetar("Fácil")
+
+    def _carregar_sprites_laterais(self, caminho, destino):
+        try:
+            sheet = pygame.image.load(caminho).convert_alpha()
+            largura_sheet, altura_sheet = sheet.get_size()
+            largura_frame = largura_sheet // 8
+            altura_frame = altura_sheet // 4
+            for linha, direcao in [(2, 'esquerda'), (3, 'direita')]:
+                for coluna in range(4):
+                    rect = pygame.Rect(coluna * largura_frame, linha * altura_frame, largura_frame, altura_frame)
+                    img = pygame.transform.scale(sheet.subsurface(rect), (self.tamanho_sprite, self.tamanho_sprite))
+                    destino[direcao].append(img)
+            return True
+        except (FileNotFoundError, pygame.error):
+            return False
+
+    def resetar(self, dificuldade="Fácil"):
+        self.vidas = 3
+        self.player_rect = pygame.Rect(60, 420, 34, 44)
+        self.vel_y = 0
+        self.no_chao = False
+        self.direcao = 'direita'
+        self.frame = 0
+        self.contador_anim = 0
+        self.invencivel_ate = 0
+        self.camera_x = 0
+
+        posicoes_dinheiro = [
+            (250, 460), (520, 420), (850, 360), (1200, 440),
+            (1550, 380), (1880, 310), (2230, 410), (2550, 350)
+        ]
+        self.dinheiros = [pygame.Rect(x, y, 36, 22) for x, y in posicoes_dinheiro]
+
+        todas_inimigas = [
+            (480, 416, 420, 606, 2),
+            (780, 356, 730, 956, 2),
+            (1130, 436, 1080, 1326, 2.5),
+            (1240, 436, 1080, 1326, -2),
+            (1500, 376, 1450, 1636, 2),
+            (1820, 306, 1760, 1986, 2.5),
+            (2150, 406, 2110, 2336, 2),
+            (2260, 406, 2110, 2336, -2.5),
+            (2500, 346, 2460, 2626, 2),
+            (2830, 416, 2750, 3020, 3),
+        ]
+
+        if dificuldade == "Fácil":
+            indices = [0, 4, 9]
+        elif dificuldade == "Média":
+            indices = [0, 1, 2, 5, 6, 9]
+        else:
+            indices = list(range(10))
+
+        self.inimigas = []
+        for i in indices:
+            x, y, lim_esq, lim_dir, vel = todas_inimigas[i]
+            self.inimigas.append({
+                "rect": pygame.Rect(x, y, 34, 44),
+                "lim_esq": lim_esq,
+                "lim_dir": lim_dir,
+                "vel": vel,
+                "frame": 0,
+                "anim": 0
+            })
+
+    def atualizar(self, teclas, tempo_atual_ms, som_pulo=None, som_moeda=None, som_dano=None):
+        ganho_dinheiro = 0
+        dx = 0
+
+        if teclas[pygame.K_a] or teclas[pygame.K_LEFT]:
+            dx = -self.vel_jogador
+            self.direcao = 'esquerda'
+        if teclas[pygame.K_d] or teclas[pygame.K_RIGHT]:
+            dx = self.vel_jogador
+            self.direcao = 'direita'
+
+        if (teclas[pygame.K_w] or teclas[pygame.K_UP] or teclas[pygame.K_SPACE]) and self.no_chao:
+            self.vel_y = self.forca_pulo
+            self.no_chao = False
+            if som_pulo:
+                som_pulo.play()
+
+        if dx != 0:
+            self.contador_anim += 1
+            if self.contador_anim >= 6:
+                self.frame = (self.frame + 1) % 4
+                self.contador_anim = 0
+        else:
+            self.frame = 0
+
+        self.player_rect.x += dx
+        self.player_rect.left = max(0, self.player_rect.left)
+        self.player_rect.right = min(self.largura_mapa, self.player_rect.right)
+
+        for plat in self.plataformas:
+            if self.player_rect.colliderect(plat):
+                if dx > 0:
+                    self.player_rect.right = plat.left
+                elif dx < 0:
+                    self.player_rect.left = plat.right
+
+        self.vel_y = min(self.vel_y + self.gravidade, 16)
+        self.player_rect.y += self.vel_y
+        self.no_chao = False
+
+        for plat in self.plataformas:
+            if self.player_rect.colliderect(plat):
+                if self.vel_y > 0:
+                    self.player_rect.bottom = plat.top
+                    self.vel_y = 0
+                    self.no_chao = True
+                elif self.vel_y < 0:
+                    self.player_rect.top = plat.bottom
+                    self.vel_y = 0
+
+        if self.player_rect.top > ALTURA + 40:
+            self.vidas -= 1
+            self.player_rect.topleft = (60, 420)
+            self.vel_y = 0
+            self.invencivel_ate = tempo_atual_ms + 1500
+            if som_dano:
+                som_dano.play()
+
+        for din in self.dinheiros[:]:
+            if self.player_rect.colliderect(din):
+                self.dinheiros.remove(din)
+                ganho_dinheiro += 3
+                if som_moeda:
+                    som_moeda.play()
+
+        for ini in self.inimigas:
+            ini["rect"].x += ini["vel"]
+            if ini["rect"].left <= ini["lim_esq"] or ini["rect"].right >= ini["lim_dir"]:
+                ini["vel"] *= -1
+            ini["anim"] += 1
+            if ini["anim"] >= 8:
+                ini["frame"] = (ini["frame"] + 1) % 4
+                ini["anim"] = 0
+
+            if self.player_rect.colliderect(ini["rect"]) and tempo_atual_ms > self.invencivel_ate:
+                self.vidas -= 1
+                self.invencivel_ate = tempo_atual_ms + 1500
+                self.vel_y = -8
+                if som_dano:
+                    som_dano.play()
+
+        self.camera_x = max(0, min(self.player_rect.centerx - LARGURA // 2, self.largura_mapa - LARGURA))
+        return ganho_dinheiro
+
+    def checar_morte(self):
+        return self.vidas <= 0
+
+    def checar_saida(self):
+        return self.player_rect.colliderect(self.porta_saida)
+
+    def desenhar(self, tela, tempo_atual_ms):
+        if self.img_fundo:
+            offset = -(int(self.camera_x * 0.4) % LARGURA)
+            tela.blit(self.img_fundo, (offset, 0))
+            tela.blit(self.img_fundo, (offset + LARGURA, 0))
+        else:
+            tela.fill((25, 25, 35))
+
+        for plat in self.plataformas:
+            r = plat.move(-self.camera_x, 0)
+            pygame.draw.rect(tela, (90, 95, 105), r, border_radius=4)
+            pygame.draw.rect(tela, (40, 45, 55), r, 3, border_radius=4)
+            pygame.draw.rect(tela, (125, 130, 140), (r.x + 2, r.y + 2, r.width - 4, 6))
+
+        r_porta = self.porta_saida.move(-self.camera_x, 0)
+        pygame.draw.rect(tela, MARROM, r_porta, border_radius=6)
+        pygame.draw.rect(tela, (60, 30, 10), r_porta, 3, border_radius=6)
+        pygame.draw.circle(tela, AMARELO, (r_porta.right - 12, r_porta.centery), 5)
+
+        for din in self.dinheiros:
+            r_din = din.move(-self.camera_x, 0)
+            if self.img_dinheiro:
+                tela.blit(self.img_dinheiro, r_din)
+            else:
+                pygame.draw.rect(tela, VERDE, r_din, border_radius=3)
+
+        for ini in self.inimigas:
+            r_ini = ini["rect"].move(-self.camera_x, 0)
+            dir_ini = 'direita' if ini["vel"] > 0 else 'esquerda'
+            if self.tem_sprite_inimigo:
+                img = self.sprites_inimigo[dir_ini][ini["frame"]]
+                tela.blit(img, (r_ini.x - 5, r_ini.y))
+            else:
+                pygame.draw.rect(tela, VERMELHO, r_ini)
+
+        piscando = tempo_atual_ms < self.invencivel_ate and (tempo_atual_ms // 100) % 2 == 0
+        if not piscando:
+            r_jog = self.player_rect.move(-self.camera_x, 0)
+            if self.tem_sprite_jogador:
+                img = self.sprites_jogador[self.direcao][self.frame]
+                tela.blit(img, (r_jog.x - 5, r_jog.y))
+            else:
+                pygame.draw.rect(tela, (50, 150, 255), r_jog)
