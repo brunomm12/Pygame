@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import sys
 import time
 import pygame
@@ -19,7 +20,52 @@ CORACAO_MATRIZ = [
 ]
 
 
+class FontePixel:
+    """
+    Renderiza textos com estética pixel art usando escala sem suavização.
+    """
+
+    def _init_(self, tamanho, escala=2):
+        """
+        Inicializa a fonte base em tamanho reduzido para ampliação pixelada.
+
+        Args:
+            tamanho (int): Tamanho visual final aproximado da fonte.
+            escala (int): Fator de ampliação em pixels (padrão 2).
+        """
+        self.escala = escala
+        tamanho_base = max(10, tamanho // escala)
+        self.fonte = pygame.font.SysFont("consolas", tamanho_base, bold=True)
+
+    def render(self, texto, antialias, cor):
+        """
+        Renderiza uma string como superfície Pygame pixelada.
+
+        Args:
+            texto (str): Texto a ser renderizado.
+            antialias (bool): Ignorado propositalmente para manter bordas secas.
+            cor (tuple): Cor RGB do texto.
+
+        Returns:
+            pygame.Surface: Superfície ampliada com aparência pixel art.
+        """
+        surf = self.fonte.render(texto, False, cor)
+        largura = surf.get_width() * self.escala
+        altura = surf.get_height() * self.escala
+        return pygame.transform.scale(surf, (largura, altura))
+
+
 def desenhar_coracao_pixel(tela, x, y, cheio=True, tam_px=3):
+    """
+    Desenha um ícone de coração em pixel art para o HUD de vidas do parkour.
+
+    Args:
+        tela (pygame.Surface): Superfície principal do jogo.
+        x (int): Posição horizontal inicial.
+        y (int): Posição vertical inicial.
+        cheio (bool): Define se o coração está preenchido ou perdido.
+        tam_px (int): Tamanho de cada bloco de pixel.
+    """
     cor_borda = (0, 0, 0) if cheio else (80, 80, 80)
     cor_miolo = (220, 20, 40) if cheio else (15, 15, 15)
 
@@ -32,6 +78,16 @@ def desenhar_coracao_pixel(tela, x, y, cheio=True, tam_px=3):
 
 
 def carregar_som(caminho, volume=0.6):
+    """
+    Carrega um efeito sonoro de forma segura, ajustando seu volume.
+
+    Args:
+        caminho (str): Nome ou caminho do arquivo .wav.
+        volume (float): Volume entre 0.0 e 1.0.
+
+    Returns:
+        pygame.mixer.Sound | None: Objeto de som ou None se o arquivo faltar.
+    """
     try:
         som = pygame.mixer.Sound(caminho)
         som.set_volume(volume)
@@ -40,7 +96,67 @@ def carregar_som(caminho, volume=0.6):
         return None
 
 
+def carregar_fundo(nome_base):
+    """
+    Carrega uma imagem de fundo testando extensões comuns e redimensionando à tela.
+
+    Args:
+        nome_base (str): Nome do arquivo sem extensão.
+
+    Returns:
+        pygame.Surface | None: Imagem pronta para blit ou None se não existir.
+    """
+    for ext in [".png", ".jpg", ".jpeg"]:
+        try:
+            img = pygame.image.load(nome_base + ext).convert()
+            return pygame.transform.scale(img, (LARGURA, ALTURA))
+        except (FileNotFoundError, pygame.error):
+            continue
+    return None
+
+
+def carregar_hit_efeito():
+    """
+    Carrega a imagem de impacto exibida ao golpear a porta final.
+
+    Returns:
+        pygame.Surface | None: Sprite do efeito de impacto ou None se faltar.
+    """
+    try:
+        img = pygame.image.load("hit_efeito.png").convert_alpha()
+        return pygame.transform.scale(img, (90, 90))
+    except (FileNotFoundError, pygame.error):
+        return None
+
+
+def desenhar_fundo_com_overlay(tela, img_fundo, opacidade=110):
+    """
+    Desenha o cenário de fundo com uma camada escura translúcida para legibilidade.
+
+    Args:
+        tela (pygame.Surface): Superfície principal do jogo.
+        img_fundo (pygame.Surface | None): Imagem de fundo ou None.
+        opacidade (int): Transparência da camada escura (0 a 255).
+    """
+    if img_fundo:
+        tela.blit(img_fundo, (0, 0))
+        overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, opacidade))
+        tela.blit(overlay, (0, 0))
+    else:
+        tela.fill(PRETO)
+
+
 def formatar_timer(segundos):
+    """
+    Converte segundos restantes para o formato MM:SS.
+
+    Args:
+        segundos (float): Tempo restante em segundos.
+
+    Returns:
+        str: Texto formatado como MM:SS.
+    """
     segundos = max(0, int(segundos))
     minutos = segundos // 60
     segs = segundos % 60
@@ -48,12 +164,27 @@ def formatar_timer(segundos):
 
 
 def formatar_tempo_ranking(segundos):
+    """
+    Converte o tempo final de conclusão para o formato MM:SS.d do ranking.
+
+    Args:
+        segundos (float): Tempo total decorrido em segundos.
+
+    Returns:
+        str: Tempo formatado com décimos de segundo.
+    """
     minutos = int(segundos // 60)
     segs = segundos % 60
     return f"{minutos:02d}:{segs:04.1f}"
 
 
 def carregar_tierlist():
+    """
+    Lê o arquivo JSON do ranking local e retorna a lista de recordes.
+
+    Returns:
+        list[dict]: Lista de registros salvos ou lista vazia.
+    """
     if os.path.exists(ARQUIVO_TIERLIST):
         try:
             with open(ARQUIVO_TIERLIST, "r", encoding="utf-8") as f:
@@ -64,6 +195,14 @@ def carregar_tierlist():
 
 
 def salvar_tierlist(nome, tempo, dificuldade):
+    """
+    Adiciona um novo recorde ao ranking local, ordena pelo menor tempo e salva em JSON.
+
+    Args:
+        nome (str): Nickname do jogador.
+        tempo (float): Tempo total da partida em segundos.
+        dificuldade (str): Dificuldade concluída ('Fácil', 'Média' ou 'Difícil').
+    """
     rank = carregar_tierlist()
     rank.append({"nome": nome, "tempo": round(tempo, 3), "dificuldade": dificuldade})
     rank = sorted(rank, key=lambda x: x["tempo"])
@@ -72,12 +211,46 @@ def salvar_tierlist(nome, tempo, dificuldade):
 
 
 def renderizar_texto_central(tela, texto, fonte, cor, x, y):
-    surf = fonte.render(texto, True, cor)
+    """
+    Renderiza texto centralizado em (x, y) com sombra projetada para destaque.
+
+    Args:
+        tela (pygame.Surface): Superfície principal do jogo.
+        texto (str): Texto a ser exibido.
+        fonte (FontePixel): Instância da fonte pixelada.
+        cor (tuple): Cor RGB principal do texto.
+        x (int): Coordenada horizontal do centro.
+        y (int): Coordenada vertical do centro.
+    """
+    sombra = fonte.render(texto, False, PRETO)
+    rect_sombra = sombra.get_rect(center=(x + 2, y + 2))
+    tela.blit(sombra, rect_sombra)
+
+    surf = fonte.render(texto, False, cor)
     rect = surf.get_rect(center=(x, y))
     tela.blit(surf, rect)
 
 
+def renderizar_texto_hud(tela, texto, fonte, cor, x, y):
+    """
+    Renderiza texto alinhado à esquerda com sombra projetada para o HUD.
+
+    Args:
+        tela (pygame.Surface): Superfície principal do jogo.
+        texto (str): Texto do HUD.
+        fonte (FontePixel): Instância da fonte pixelada.
+        cor (tuple): Cor RGB do texto.
+        x (int): Coordenada horizontal esquerda.
+        y (int): Coordenada vertical superior.
+    """
+    tela.blit(fonte.render(texto, False, PRETO), (x + 2, y + 2))
+    tela.blit(fonte.render(texto, False, cor), (x, y))
+
+
 def main():
+    """
+    Executa o loop principal e gerencia todas as transições de estado do jogo.
+    """
     pygame.init()
     pygame.key.set_repeat(200, 120)
 
@@ -100,18 +273,24 @@ def main():
     pygame.display.set_caption("Lorenzo Magnus - Em Busca da Saída")
     clock = pygame.time.Clock()
 
-    fonte_pequena = pygame.font.SysFont("consolas", 20, bold=True)
-    fonte_media = pygame.font.SysFont("consolas", 28, bold=True)
-    fonte_grande = pygame.font.SysFont("consolas", 48, bold=True)
+    fundo_inicio = carregar_fundo("inicio")
+    fundo_modos = carregar_fundo("modos")
+    fundo_porta = carregar_fundo("fundo_porta")
+    fundo_fim = carregar_fundo("fim")
+    img_hit = carregar_hit_efeito()
+
+    fonte_pequena = FontePixel(20, escala=2)
+    fonte_media = FontePixel(28, escala=2)
+    fonte_grande = FontePixel(48, escala=3)
 
     porta = Porta(vida_maxima=2000)
     loja = LojaUpgrades()
     labirinto = FaseLabirinto()
     parkour = FaseParkour()
 
-    btn_facil = pygame.Rect(LARGURA // 2 - 140, 250, 280, 60)
-    btn_media = pygame.Rect(LARGURA // 2 - 140, 330, 280, 60)
-    btn_dificil = pygame.Rect(LARGURA // 2 - 140, 410, 280, 60)
+    btn_facil = pygame.Rect(LARGURA // 2 - 150, 245, 300, 62)
+    btn_media = pygame.Rect(LARGURA // 2 - 150, 325, 300, 62)
+    btn_dificil = pygame.Rect(LARGURA // 2 - 150, 405, 300, 62)
 
     estado = "MENU_NOME"
     nome_jogador = ""
@@ -128,6 +307,7 @@ def main():
     tempo_inicio_contagem = 0
     tem_auto_clique = False
     tempo_ultimo_auto_clique = 0
+    efeitos_hit = []
 
     while True:
         tela.fill(PRETO)
@@ -171,20 +351,25 @@ def main():
                         estado = "MENU_DIFICULDADE"
 
         if estado == "MENU_NOME":
-            renderizar_texto_central(tela, "LORENZO MAGNUS", fonte_grande, BRANCO, LARGURA // 2, 120)
-            renderizar_texto_central(tela, "EM BUSCA DA SAÍDA", fonte_media, AMARELO, LARGURA // 2, 175)
-            renderizar_texto_central(tela, "Digite seu Nickname:", fonte_media, CINZA, LARGURA // 2, 250)
+            desenhar_fundo_com_overlay(tela, fundo_inicio, opacidade=115)
 
-            caixa_texto = pygame.Rect(LARGURA // 2 - 150, 300, 300, 50)
-            pygame.draw.rect(tela, BRANCO, caixa_texto, 2, border_radius=8)
-            renderizar_texto_central(tela, nome_jogador, fonte_media, AMARELO, LARGURA // 2, 325)
+            renderizar_texto_central(tela, "LORENZO MAGNUS", fonte_grande, BRANCO, LARGURA // 2, 120)
+            renderizar_texto_central(tela, "EM BUSCA DA SAÍDA", fonte_media, AMARELO, LARGURA // 2, 180)
+            renderizar_texto_central(tela, "Digite seu Nickname:", fonte_media, BRANCO, LARGURA // 2, 260)
+
+            caixa_texto = pygame.Rect(LARGURA // 2 - 160, 300, 320, 52)
+            pygame.draw.rect(tela, (20, 20, 30), caixa_texto, border_radius=8)
+            pygame.draw.rect(tela, BRANCO, caixa_texto, 3, border_radius=8)
+            renderizar_texto_central(tela, nome_jogador, fonte_media, AMARELO, LARGURA // 2, 326)
 
             if len(nome_jogador) > 0:
-                renderizar_texto_central(tela, "Pressione ENTER para continuar", fonte_pequena, VERDE, LARGURA // 2, 400)
+                renderizar_texto_central(tela, "Pressione ENTER para continuar", fonte_pequena, VERDE, LARGURA // 2, 405)
 
         elif estado == "MENU_DIFICULDADE":
-            renderizar_texto_central(tela, f"Jogador: {nome_jogador}", fonte_media, BRANCO, LARGURA // 2, 120)
-            renderizar_texto_central(tela, "Escolha a Dificuldade:", fonte_media, CINZA, LARGURA // 2, 180)
+            desenhar_fundo_com_overlay(tela, fundo_modos, opacidade=120)
+
+            renderizar_texto_central(tela, f"Jogador: {nome_jogador}", fonte_media, BRANCO, LARGURA // 2, 110)
+            renderizar_texto_central(tela, "Escolha a Dificuldade:", fonte_media, AMARELO, LARGURA // 2, 175)
 
             for btn, nome, hp, cor, vel_ms, limite_seg in [
                 (btn_facil, "Fácil (2:00)", 500, VERDE, 500, 120),
@@ -202,6 +387,7 @@ def main():
                         dano_por_hit = 1
                         loja.resetar_precos()
                         tem_auto_clique = False
+                        efeitos_hit = []
 
                         labirinto.resetar()
                         parkour.resetar(dificuldade_atual)
@@ -209,19 +395,20 @@ def main():
                         tempo_inicio_contagem = time.time()
 
                 pygame.draw.rect(tela, cor, btn, border_radius=10)
-                renderizar_texto_central(tela, nome, fonte_pequena, PRETO, btn.centerx, btn.centery)
+                pygame.draw.rect(tela, PRETO, btn, 2, border_radius=10)
+                renderizar_texto_central(tela, nome, fonte_pequena, BRANCO, btn.centerx, btn.centery)
 
         elif estado == "CONTAGEM":
             restante = 3 - int(time.time() - tempo_inicio_contagem)
             labirinto.desenhar(tela)
 
             overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 120))
+            overlay.fill((0, 0, 0, 130))
             tela.blit(overlay, (0, 0))
 
             if restante > 0:
                 renderizar_texto_central(tela, "PREPARE-SE!", fonte_media, AMARELO, LARGURA // 2, ALTURA // 2 - 50)
-                renderizar_texto_central(tela, str(restante), fonte_grande, BRANCO, LARGURA // 2, ALTURA // 2 + 20)
+                renderizar_texto_central(tela, str(restante), fonte_grande, BRANCO, LARGURA // 2, ALTURA // 2 + 25)
             else:
                 estado = "LABIRINTO"
                 tempo_inicio = time.time()
@@ -245,9 +432,9 @@ def main():
             labirinto.desenhar(tela)
 
             cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
-            tela.blit(fonte_pequena.render("FUJA ATÉ A SAÍDA!", True, BRANCO), (10, 10))
+            renderizar_texto_hud(tela, "FUJA ATÉ A SAÍDA!", fonte_pequena, BRANCO, 10, 10)
             renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA // 2, 20)
-            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 10))
+            renderizar_texto_hud(tela, f"Caixa: R$ {dinheiro}", fonte_pequena, VERDE, LARGURA - 210, 10)
 
             if tempo_restante <= 0:
                 motivo_game_over = "TEMPO ESGOTADO!"
@@ -280,8 +467,8 @@ def main():
 
             cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
             renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA // 2, 24)
-            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 18))
-            renderizar_texto_central(tela, "A/D: Correr | W/ESPAÇO: Pular", fonte_pequena, BRANCO, LARGURA // 2, 52)
+            renderizar_texto_hud(tela, f"Caixa: R$ {dinheiro}", fonte_pequena, VERDE, LARGURA - 210, 16)
+            renderizar_texto_central(tela, "A/D: Correr | W/ESPAÇO: Pular", fonte_pequena, BRANCO, LARGURA // 2, 58)
 
             if tempo_restante <= 0:
                 motivo_game_over = "TEMPO ESGOTADO!"
@@ -294,13 +481,17 @@ def main():
                     som_gameover.play()
                 estado = "GAME_OVER"
             elif parkour.checar_saida():
+                efeitos_hit = []
                 estado = "JOGO"
 
         elif estado == "GAME_OVER":
+            desenhar_fundo_com_overlay(tela, fundo_fim, opacidade=175)
             renderizar_texto_central(tela, motivo_game_over, fonte_grande, VERMELHO, LARGURA // 2, ALTURA // 2 - 40)
-            renderizar_texto_central(tela, "Pressione ENTER para tentar novamente", fonte_pequena, CINZA, LARGURA // 2, ALTURA // 2 + 40)
+            renderizar_texto_central(tela, "Pressione ENTER para tentar novamente", fonte_pequena, BRANCO, LARGURA // 2, ALTURA // 2 + 45)
 
         elif estado == "JOGO":
+            desenhar_fundo_com_overlay(tela, fundo_porta, opacidade=85)
+
             tempo_decorrido = time.time() - tempo_inicio
             tempo_restante = tempo_limite - tempo_decorrido
             tempo_atual_ms = pygame.time.get_ticks()
@@ -312,6 +503,7 @@ def main():
                 porta.receber_dano(dano_por_hit)
                 dinheiro += dano_por_hit
                 bateu_na_porta = True
+                efeitos_hit.append((mouse_pos[0], mouse_pos[1], tempo_atual_ms + 120))
                 if som_hit:
                     som_hit.play()
 
@@ -321,6 +513,9 @@ def main():
                 dinheiro += dano_por_hit
                 tempo_ultimo_auto_clique = tempo_atual_ms
                 bateu_na_porta = True
+                hx = random.randint(porta.rect.left + 25, porta.rect.right - 25)
+                hy = random.randint(porta.rect.top + 25, porta.rect.bottom - 25)
+                efeitos_hit.append((hx, hy, tempo_atual_ms + 100))
                 if som_hit:
                     som_hit.play()
 
@@ -339,11 +534,20 @@ def main():
 
             porta.desenhar(tela)
 
+            # Desenha efeitos de impacto ativos sobre a porta
+            efeitos_hit = [ef for ef in efeitos_hit if ef[2] > tempo_atual_ms]
+            for hx, hy, _ in efeitos_hit:
+                if img_hit:
+                    rect_hit = img_hit.get_rect(center=(hx, hy))
+                    tela.blit(img_hit, rect_hit)
+                else:
+                    pygame.draw.circle(tela, AMARELO, (hx, hy), 18, 3)
+
             cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
-            tela.blit(fonte_pequena.render(f"Jogador: {nome_jogador}", True, BRANCO), (20, 20))
-            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (20, 50))
-            tela.blit(fonte_pequena.render(f"Dano/Hit: {dano_por_hit}", True, AMARELO), (20, 80))
-            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA - 90, 35)
+            renderizar_texto_hud(tela, f"Jogador: {nome_jogador}", fonte_pequena, BRANCO, 20, 18)
+            renderizar_texto_hud(tela, f"Caixa: R$ {dinheiro}", fonte_pequena, VERDE, 20, 48)
+            renderizar_texto_hud(tela, f"Dano/Hit: {dano_por_hit}", fonte_pequena, AMARELO, 20, 78)
+            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA - 95, 35)
 
             dinheiro, dano_por_hit, tem_auto_clique = loja.tentar_comprar(
                 mouse_pos, clique, dinheiro, dano_por_hit, tem_auto_clique, som_caixa
@@ -351,18 +555,20 @@ def main():
             loja.desenhar(tela, mouse_pos, dinheiro, fonte_pequena)
 
         elif estado == "TIERLIST":
-            renderizar_texto_central(tela, "HALL DA FAMA", fonte_grande, BRANCO, LARGURA // 2, 65)
+            desenhar_fundo_com_overlay(tela, fundo_fim, opacidade=135)
+
+            renderizar_texto_central(tela, "HALL DA FAMA", fonte_grande, AMARELO, LARGURA // 2, 65)
             rank = carregar_tierlist()
 
             rank_facil = [r for r in rank if r.get('dificuldade', 'Média') == 'Fácil'][:5]
             rank_media = [r for r in rank if r.get('dificuldade', 'Média') == 'Média'][:5]
             rank_dificil = [r for r in rank if r.get('dificuldade', 'Média') == 'Difícil'][:5]
 
-            renderizar_texto_central(tela, "FÁCIL", fonte_media, VERDE, 165, 145)
+            renderizar_texto_central(tela, "FÁCIL", fonte_media, VERDE, 150, 145)
             renderizar_texto_central(tela, "MÉDIA", fonte_media, AMARELO, LARGURA // 2, 145)
-            renderizar_texto_central(tela, "DIFÍCIL", fonte_media, VERMELHO, LARGURA - 165, 145)
+            renderizar_texto_central(tela, "DIFÍCIL", fonte_media, VERMELHO, LARGURA - 150, 145)
 
-            colunas = [(rank_facil, 165), (rank_media, LARGURA // 2), (rank_dificil, LARGURA - 165)]
+            colunas = [(rank_facil, 150), (rank_media, LARGURA // 2), (rank_dificil, LARGURA - 150)]
 
             for lista, x_pos in colunas:
                 y_pos = 195
@@ -378,13 +584,13 @@ def main():
 
                     cor = VERDE if eh_run_atual else BRANCO
                     renderizar_texto_central(tela, texto_rank, fonte_pequena, cor, x_pos, y_pos)
-                    y_pos += 35
+                    y_pos += 38
 
-            renderizar_texto_central(tela, "Pressione ENTER para jogar novamente", fonte_pequena, BRANCO, LARGURA // 2, 565)
+            renderizar_texto_central(tela, "Pressione ENTER para jogar novamente", fonte_pequena, BRANCO, LARGURA // 2, 560)
 
         pygame.display.flip()
         clock.tick(FPS)
 
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
