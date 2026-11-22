@@ -2,7 +2,7 @@ import sys
 import time
 import pygame
 from config import *
-from objetos_jogo import FaseLabirinto, FaseParkour
+from objetos_jogo import Porta, LojaUpgrades, FaseLabirinto, FaseParkour
 
 
 CORACAO_MATRIZ = [
@@ -29,6 +29,13 @@ def desenhar_coracao_pixel(tela, x, y, cheio=True, tam_px=3):
                 pygame.draw.rect(tela, cor_miolo, (x + col_idx * tam_px, y + linha_idx * tam_px, tam_px, tam_px))
 
 
+def formatar_timer(segundos):
+    segundos = max(0, int(segundos))
+    minutos = segundos // 60
+    segs = segundos % 60
+    return f"{minutos:02d}:{segs:02d}"
+
+
 def renderizar_texto_central(tela, texto, fonte, cor, x, y):
     surf = fonte.render(texto, True, cor)
     rect = surf.get_rect(center=(x, y))
@@ -47,6 +54,8 @@ def main():
     fonte_media = pygame.font.SysFont("consolas", 28, bold=True)
     fonte_grande = pygame.font.SysFont("consolas", 48, bold=True)
 
+    porta = Porta(vida_maxima=2000)
+    loja = LojaUpgrades()
     labirinto = FaseLabirinto()
     parkour = FaseParkour()
 
@@ -58,10 +67,16 @@ def main():
     nome_jogador = ""
     dificuldade_atual = ""
     dinheiro = 0
+    dano_por_hit = 1
+    tempo_inicio = 0
+    tempo_limite = 120
     motivo_game_over = "VOCÊ PERDEU!"
+
     intervalo_inimigo = 500
     tempo_ultimo_mov_inimigo = 0
     tempo_inicio_contagem = 0
+    tem_auto_clique = False
+    tempo_ultimo_auto_clique = 0
 
     while True:
         tela.fill(PRETO)
@@ -115,17 +130,23 @@ def main():
             renderizar_texto_central(tela, f"Jogador: {nome_jogador}", fonte_media, BRANCO, LARGURA // 2, 120)
             renderizar_texto_central(tela, "Escolha a Dificuldade:", fonte_media, CINZA, LARGURA // 2, 180)
 
-            for btn, nome, cor, vel_ms in [
-                (btn_facil, "Fácil (2:00)", VERDE, 500),
-                (btn_media, "Média (2:30)", AMARELO, 250),
-                (btn_dificil, "Difícil (3:15)", VERMELHO, 167)
+            for btn, nome, hp, cor, vel_ms, limite_seg in [
+                (btn_facil, "Fácil (2:00)", 500, VERDE, 500, 120),
+                (btn_media, "Média (2:30)", 2000, AMARELO, 250, 150),
+                (btn_dificil, "Difícil (3:15)", 10000, VERMELHO, 167, 195)
             ]:
                 if btn.collidepoint(mouse_pos):
                     pygame.draw.rect(tela, BRANCO, btn.inflate(6, 6), border_radius=10)
                     if clique:
                         dificuldade_atual = nome.split(" ")[0]
                         intervalo_inimigo = vel_ms
+                        tempo_limite = limite_seg
+                        porta.configurar_dificuldade(hp)
                         dinheiro = 0
+                        dano_por_hit = 1
+                        loja.resetar_precos()
+                        tem_auto_clique = False
+
                         labirinto.resetar()
                         parkour.resetar(dificuldade_atual)
                         estado = "CONTAGEM"
@@ -147,10 +168,13 @@ def main():
                 renderizar_texto_central(tela, str(restante), fonte_grande, BRANCO, LARGURA // 2, ALTURA // 2 + 20)
             else:
                 estado = "LABIRINTO"
+                tempo_inicio = time.time()
                 tempo_ultimo_mov_inimigo = pygame.time.get_ticks()
 
         elif estado == "LABIRINTO":
             tempo_atual = pygame.time.get_ticks()
+            tempo_decorrido = time.time() - tempo_inicio
+            tempo_restante = tempo_limite - tempo_decorrido
 
             ganho = labirinto.checar_dinheiro()
             if ganho > 0:
@@ -161,10 +185,16 @@ def main():
                 tempo_ultimo_mov_inimigo = tempo_atual
 
             labirinto.desenhar(tela)
+
+            cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
             tela.blit(fonte_pequena.render("FUJA ATÉ A SAÍDA!", True, BRANCO), (10, 10))
+            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA // 2, 20)
             tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 10))
 
-            if labirinto.checar_morte():
+            if tempo_restante <= 0:
+                motivo_game_over = "TEMPO ESGOTADO!"
+                estado = "GAME_OVER"
+            elif labirinto.checar_morte():
                 motivo_game_over = "VOCÊ FOI PEGO!"
                 estado = "GAME_OVER"
             elif labirinto.checar_saida():
@@ -173,8 +203,10 @@ def main():
 
         elif estado == "PARKOUR":
             tempo_atual_ms = pygame.time.get_ticks()
-            teclas = pygame.key.get_pressed()
+            tempo_decorrido = time.time() - tempo_inicio
+            tempo_restante = tempo_limite - tempo_decorrido
 
+            teclas = pygame.key.get_pressed()
             ganho = parkour.atualizar(teclas, tempo_atual_ms)
             if ganho > 0:
                 dinheiro += ganho
@@ -184,21 +216,72 @@ def main():
             for i in range(3):
                 desenhar_coracao_pixel(tela, 20 + i * 36, 16, cheio=(i < parkour.vidas), tam_px=3)
 
+            cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
+            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA // 2, 24)
             tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 18))
             renderizar_texto_central(tela, "A/D: Correr | W/ESPAÇO: Pular", fonte_pequena, BRANCO, LARGURA // 2, 52)
 
-            if parkour.checar_morte():
+            if tempo_restante <= 0:
+                motivo_game_over = "TEMPO ESGOTADO!"
+                estado = "GAME_OVER"
+            elif parkour.checar_morte():
                 motivo_game_over = "VOCÊ PERDEU!"
                 estado = "GAME_OVER"
             elif parkour.checar_saida():
-                estado = "MENU_DIFICULDADE"
+                estado = "JOGO"
 
         elif estado == "GAME_OVER":
             renderizar_texto_central(tela, motivo_game_over, fonte_grande, VERMELHO, LARGURA // 2, ALTURA // 2 - 40)
             renderizar_texto_central(tela, "Pressione ENTER para tentar novamente", fonte_pequena, CINZA, LARGURA // 2, ALTURA // 2 + 40)
 
+        elif estado == "JOGO":
+            tempo_decorrido = time.time() - tempo_inicio
+            tempo_restante = tempo_limite - tempo_decorrido
+            tempo_atual_ms = pygame.time.get_ticks()
+
+            bateu_na_porta = False
+
+            # Clique manual do jogador
+            if porta.rect.collidepoint(mouse_pos) and clique:
+                porta.receber_dano(dano_por_hit)
+                dinheiro += dano_por_hit
+                bateu_na_porta = True
+
+            # Auto-Chute automático (10 cliques/s = a cada 100 ms)
+            if tem_auto_clique and tempo_atual_ms - tempo_ultimo_auto_clique >= 100:
+                porta.receber_dano(dano_por_hit)
+                dinheiro += dano_por_hit
+                tempo_ultimo_auto_clique = tempo_atual_ms
+                bateu_na_porta = True
+
+            if not bateu_na_porta:
+                porta.resetar_impacto()
+
+            if tempo_restante <= 0:
+                motivo_game_over = "TEMPO ESGOTADO!"
+                estado = "GAME_OVER"
+            elif porta.vida_atual <= 0:
+                estado = "MENU_DIFICULDADE"
+
+            porta.desenhar(tela)
+
+            cor_timer = VERMELHO if tempo_restante <= 30 else AMARELO
+            tela.blit(fonte_pequena.render(f"Jogador: {nome_jogador}", True, BRANCO), (20, 20))
+            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (20, 50))
+            tela.blit(fonte_pequena.render(f"Dano/Hit: {dano_por_hit}", True, AMARELO), (20, 80))
+            renderizar_texto_central(tela, formatar_timer(tempo_restante), fonte_media, cor_timer, LARGURA - 90, 35)
+
+            dinheiro, dano_por_hit, tem_auto_clique = loja.tentar_comprar(
+                mouse_pos, clique, dinheiro, dano_por_hit, tem_auto_clique
+            )
+            loja.desenhar(tela, mouse_pos, dinheiro, fonte_pequena)
+
         pygame.display.flip()
         clock.tick(FPS)
+
+
+if _name_ == "_main_":
+    main()
 
 
 if __name__ == "__main__":
