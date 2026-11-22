@@ -1,3 +1,5 @@
+import json
+import os
 import sys
 import time
 import pygame
@@ -36,6 +38,30 @@ def formatar_timer(segundos):
     return f"{minutos:02d}:{segs:02d}"
 
 
+def formatar_tempo_ranking(segundos):
+    minutos = int(segundos // 60)
+    segs = segundos % 60
+    return f"{minutos:02d}:{segs:04.1f}"
+
+
+def carregar_tierlist():
+    if os.path.exists(ARQUIVO_TIERLIST):
+        try:
+            with open(ARQUIVO_TIERLIST, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+def salvar_tierlist(nome, tempo, dificuldade):
+    rank = carregar_tierlist()
+    rank.append({"nome": nome, "tempo": round(tempo, 3), "dificuldade": dificuldade})
+    rank = sorted(rank, key=lambda x: x["tempo"])
+    with open(ARQUIVO_TIERLIST, "w", encoding="utf-8") as f:
+        json.dump(rank, f)
+
+
 def renderizar_texto_central(tela, texto, fonte, cor, x, y):
     surf = fonte.render(texto, True, cor)
     rect = surf.get_rect(center=(x, y))
@@ -70,6 +96,7 @@ def main():
     dano_por_hit = 1
     tempo_inicio = 0
     tempo_limite = 120
+    tempo_final = 0
     motivo_game_over = "VOCÊ PERDEU!"
 
     intervalo_inimigo = 500
@@ -109,6 +136,11 @@ def main():
                         nome_jogador = nome_jogador[:-1]
                     elif len(nome_jogador) < 12 and evento.unicode.isprintable():
                         nome_jogador += evento.unicode
+
+                elif estado == "TIERLIST":
+                    if evento.key in [pygame.K_RETURN, pygame.K_SPACE]:
+                        estado = "MENU_NOME"
+                        nome_jogador = ""
 
                 elif estado == "GAME_OVER":
                     if evento.key in [pygame.K_RETURN, pygame.K_SPACE]:
@@ -261,7 +293,9 @@ def main():
                 motivo_game_over = "TEMPO ESGOTADO!"
                 estado = "GAME_OVER"
             elif porta.vida_atual <= 0:
-                estado = "MENU_DIFICULDADE"
+                tempo_final = tempo_decorrido
+                salvar_tierlist(nome_jogador, tempo_final, dificuldade_atual)
+                estado = "TIERLIST"
 
             porta.desenhar(tela)
 
@@ -276,12 +310,40 @@ def main():
             )
             loja.desenhar(tela, mouse_pos, dinheiro, fonte_pequena)
 
+        elif estado == "TIERLIST":
+            renderizar_texto_central(tela, "HALL DA FAMA", fonte_grande, BRANCO, LARGURA // 2, 65)
+            rank = carregar_tierlist()
+
+            rank_facil = [r for r in rank if r.get('dificuldade', 'Média') == 'Fácil'][:5]
+            rank_media = [r for r in rank if r.get('dificuldade', 'Média') == 'Média'][:5]
+            rank_dificil = [r for r in rank if r.get('dificuldade', 'Média') == 'Difícil'][:5]
+
+            renderizar_texto_central(tela, "FÁCIL", fonte_media, VERDE, 165, 145)
+            renderizar_texto_central(tela, "MÉDIA", fonte_media, AMARELO, LARGURA // 2, 145)
+            renderizar_texto_central(tela, "DIFÍCIL", fonte_media, VERMELHO, LARGURA - 165, 145)
+
+            colunas = [(rank_facil, 165), (rank_media, LARGURA // 2), (rank_dificil, LARGURA - 165)]
+
+            for lista, x_pos in colunas:
+                y_pos = 195
+                for i, registro in enumerate(lista):
+                    tempo_fmt = formatar_tempo_ranking(registro['tempo'])
+                    texto_rank = f"{i + 1}º {registro['nome']} ({tempo_fmt})"
+
+                    eh_run_atual = (
+                        registro['nome'] == nome_jogador
+                        and registro['tempo'] == round(tempo_final, 3)
+                        and registro.get('dificuldade', 'Média') == dificuldade_atual
+                    )
+
+                    cor = VERDE if eh_run_atual else BRANCO
+                    renderizar_texto_central(tela, texto_rank, fonte_pequena, cor, x_pos, y_pos)
+                    y_pos += 35
+
+            renderizar_texto_central(tela, "Pressione ENTER para jogar novamente", fonte_pequena, BRANCO, LARGURA // 2, 565)
+
         pygame.display.flip()
         clock.tick(FPS)
-
-
-if _name_ == "_main_":
-    main()
 
 
 if __name__ == "__main__":
