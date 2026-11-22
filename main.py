@@ -1,8 +1,32 @@
 import sys
+import time
 import pygame
 from config import *
-import time
-from objetos_jogo import FaseLabirinto
+from objetos_jogo import FaseLabirinto, FaseParkour
+
+
+CORACAO_MATRIZ = [
+    " 11   11 ",
+    "1221 1221",
+    "122212221",
+    "122222221",
+    " 1222221 ",
+    "  12221  ",
+    "   121   ",
+    "    1    ",
+]
+
+
+def desenhar_coracao_pixel(tela, x, y, cheio=True, tam_px=3):
+    cor_borda = (0, 0, 0) if cheio else (80, 80, 80)
+    cor_miolo = (220, 20, 40) if cheio else (15, 15, 15)
+
+    for linha_idx, linha in enumerate(CORACAO_MATRIZ):
+        for col_idx, char in enumerate(linha):
+            if char == "1":
+                pygame.draw.rect(tela, cor_borda, (x + col_idx * tam_px, y + linha_idx * tam_px, tam_px, tam_px))
+            elif char == "2":
+                pygame.draw.rect(tela, cor_miolo, (x + col_idx * tam_px, y + linha_idx * tam_px, tam_px, tam_px))
 
 
 def renderizar_texto_central(tela, texto, fonte, cor, x, y):
@@ -24,6 +48,7 @@ def main():
     fonte_grande = pygame.font.SysFont("consolas", 48, bold=True)
 
     labirinto = FaseLabirinto()
+    parkour = FaseParkour()
 
     btn_facil = pygame.Rect(LARGURA // 2 - 140, 250, 280, 60)
     btn_media = pygame.Rect(LARGURA // 2 - 140, 330, 280, 60)
@@ -33,6 +58,7 @@ def main():
     nome_jogador = ""
     dificuldade_atual = ""
     dinheiro = 0
+    motivo_game_over = "VOCÊ PERDEU!"
     intervalo_inimigo = 500
     tempo_ultimo_mov_inimigo = 0
     tempo_inicio_contagem = 0
@@ -69,6 +95,10 @@ def main():
                     elif len(nome_jogador) < 12 and evento.unicode.isprintable():
                         nome_jogador += evento.unicode
 
+                elif estado == "GAME_OVER":
+                    if evento.key in [pygame.K_RETURN, pygame.K_SPACE]:
+                        estado = "MENU_DIFICULDADE"
+
         if estado == "MENU_NOME":
             renderizar_texto_central(tela, "LORENZO MAGNUS", fonte_grande, BRANCO, LARGURA // 2, 120)
             renderizar_texto_central(tela, "EM BUSCA DA SAÍDA", fonte_media, AMARELO, LARGURA // 2, 175)
@@ -97,11 +127,13 @@ def main():
                         intervalo_inimigo = vel_ms
                         dinheiro = 0
                         labirinto.resetar()
+                        parkour.resetar(dificuldade_atual)
                         estado = "CONTAGEM"
                         tempo_inicio_contagem = time.time()
 
                 pygame.draw.rect(tela, cor, btn, border_radius=10)
                 renderizar_texto_central(tela, nome, fonte_pequena, PRETO, btn.centerx, btn.centery)
+
         elif estado == "CONTAGEM":
             restante = 3 - int(time.time() - tempo_inicio_contagem)
             labirinto.desenhar(tela)
@@ -132,10 +164,39 @@ def main():
             tela.blit(fonte_pequena.render("FUJA ATÉ A SAÍDA!", True, BRANCO), (10, 10))
             tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 10))
 
-            if labirinto.checar_morte() or labirinto.checar_saida():
+            if labirinto.checar_morte():
+                motivo_game_over = "VOCÊ FOI PEGO!"
+                estado = "GAME_OVER"
+            elif labirinto.checar_saida():
+                parkour.resetar(dificuldade_atual)
+                estado = "PARKOUR"
+
+        elif estado == "PARKOUR":
+            tempo_atual_ms = pygame.time.get_ticks()
+            teclas = pygame.key.get_pressed()
+
+            ganho = parkour.atualizar(teclas, tempo_atual_ms)
+            if ganho > 0:
+                dinheiro += ganho
+
+            parkour.desenhar(tela, tempo_atual_ms)
+
+            for i in range(3):
+                desenhar_coracao_pixel(tela, 20 + i * 36, 16, cheio=(i < parkour.vidas), tam_px=3)
+
+            tela.blit(fonte_pequena.render(f"Caixa: R$ {dinheiro}", True, VERDE), (LARGURA - 180, 18))
+            renderizar_texto_central(tela, "A/D: Correr | W/ESPAÇO: Pular", fonte_pequena, BRANCO, LARGURA // 2, 52)
+
+            if parkour.checar_morte():
+                motivo_game_over = "VOCÊ PERDEU!"
+                estado = "GAME_OVER"
+            elif parkour.checar_saida():
                 estado = "MENU_DIFICULDADE"
 
-        
+        elif estado == "GAME_OVER":
+            renderizar_texto_central(tela, motivo_game_over, fonte_grande, VERMELHO, LARGURA // 2, ALTURA // 2 - 40)
+            renderizar_texto_central(tela, "Pressione ENTER para tentar novamente", fonte_pequena, CINZA, LARGURA // 2, ALTURA // 2 + 40)
+
         pygame.display.flip()
         clock.tick(FPS)
 
