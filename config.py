@@ -1,14 +1,16 @@
+# Configurações da Tela
 LARGURA = 800
 ALTURA = 600
 FPS = 60
 
-PRETO = (0, 0, 0)
+# Cores
 BRANCO = (255, 255, 255)
-CINZA = (150, 150, 150)
-VERDE = (0, 200, 80)
-AMARELO = (255, 215, 0)
-VERMELHO = (220, 40, 40)
-AZUL = (40, 120, 220)
-MARROM = (139, 69, 19)
+PRETO = (15, 15, 15)
+MARROM = (120, 70, 30)
+VERDE = (50, 200, 50)
+VERMELHO = (200, 50, 50)
+CINZA = (180, 180, 180)
+AZUL = (50, 120, 200)
+AMARELO = (255, 220, 50)
 
 ARQUIVO_TIERLIST = "tierlist_enzo.json"
