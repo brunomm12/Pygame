@@ -6,7 +6,7 @@ Membros do grupo
 - Moshe Laloum
 
 Vídeo de apresentação
-(Link do vídeo aqui)
+https://youtu.be/kUsXTxZoOwo
 
 Sobre o jogo
 Lorenzo Magnus é um jogo 2D feito em Python com Pygame onde o objetivo é escapar de uma masmorra antes que o tempo acabe. O jogo passa por três fases seguidas, com um cronômetro geral e um ranking:
