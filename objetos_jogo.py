@@ -5,17 +5,10 @@ from config import *
 
 
 class Porta:
-    """
-    Representa a porta final da fase clicker, controlando vida, tremor e barra de HP.
-    """
+    """Representa a porta final que o jogador precisa destruir na fase clicker."""
 
     def __init__(self, vida_maxima):
-        """
-        Inicializa a porta com vida máxima e retângulo base na tela.
-
-        Args:
-            vida_maxima (int): Quantidade total de vida inicial da porta.
-        """
+        """Inicializa a porta com a vida máxima definida e carrega o fundo da fase."""
         self.vida_maxima = vida_maxima
         self.vida_atual = vida_maxima
         self.rect_base = pygame.Rect(LARGURA // 2 - 100, 130, 200, 310)
@@ -23,46 +16,40 @@ class Porta:
         self.tremer_x = 0
         self.tremer_y = 0
 
-    def configurar_dificuldade(self, nova_vida_maxima):
-        """
-        Ajusta a vida máxima e restaura a vida atual conforme a dificuldade escolhida.
+        self.img_fundo = None
+        for nome_arquivo in ["fundo_porta.png", "fundo_porta.jpg", "fundo_porta.jpeg"]:
+            try:
+                img = pygame.image.load(nome_arquivo).convert()
+                self.img_fundo = pygame.transform.scale(img, (LARGURA + 16, ALTURA + 16))
+                break
+            except (FileNotFoundError, pygame.error):
+                continue
 
-        Args:
-            nova_vida_maxima (int): Novo valor de HP máximo da porta.
-        """
+    def configurar_dificuldade(self, nova_vida_maxima):
+        """Redefine a vida máxima e atual da porta conforme a dificuldade escolhida."""
         self.vida_maxima = nova_vida_maxima
         self.vida_atual = nova_vida_maxima
 
     def receber_dano(self, dano):
-        """
-        Aplica dano à porta e ativa o efeito visual de recuo e tremor.
-
-        Args:
-            dano (int): Quantidade de dano causada pelo clique ou Auto-Chute.
-        """
+        """Aplica dano à porta e gera o efeito visual de impacto e tremor."""
         self.vida_atual = max(0, self.vida_atual - dano)
         self.rect = self.rect_base.inflate(-15, -15)
         self.tremer_x = random.randint(-6, 6)
         self.tremer_y = random.randint(-6, 6)
 
     def resetar_impacto(self):
-        """
-        Restaura a posição e o tamanho originais da porta quando não há impacto ativo.
-        """
+        """Restaura a posição e o tamanho originais da porta após o impacto."""
         self.rect = self.rect_base.copy()
         self.tremer_x = 0
         self.tremer_y = 0
 
     def desenhar(self, tela):
-        """
-        Renderiza a porta e sua barra de vida na tela.
-
-        Args:
-            tela (pygame.Surface): Superfície principal do jogo.
-        """
-        rect_desenho = self.rect.move(self.tremer_x, self.tremer_y)
-        pygame.draw.rect(tela, MARROM, rect_desenho, border_radius=5)
-        pygame.draw.circle(tela, BRANCO, (rect_desenho.right - 25, rect_desenho.centery), 10)
+        """Renderiza o cenário da porta e a barra de vida na tela."""
+        if self.img_fundo:
+            tela.blit(self.img_fundo, (-8 + self.tremer_x, -8 + self.tremer_y))
+        else:
+            pygame.draw.rect(tela, MARROM, self.rect, border_radius=5)
+            pygame.draw.circle(tela, BRANCO, (self.rect.right - 25, self.rect.centery), 10)
 
         largura_barra = 400
         pct_vida = max(self.vida_atual / self.vida_maxima, 0)
@@ -73,14 +60,10 @@ class Porta:
 
 
 class LojaUpgrades:
-    """
-    Gerencia os botões de upgrades de dano e o item de Auto-Chute na fase da porta.
-    """
+    """Gerencia os itens de melhoria de dano e auto-chute da fase da porta."""
 
     def __init__(self):
-        """
-        Inicializa a lista de itens disponíveis na loja com custos e posições.
-        """
+        """Inicializa a lista de upgrades com seus custos, bônus e áreas clicáveis."""
         self.itens = [
             {"nome": "Tênis Novo", "custo": 10, "dano": 1, "tipo": "dano", "rect": pygame.Rect(20, 500, 175, 70)},
             {"nome": "Soco Inglês", "custo": 50, "dano": 5, "tipo": "dano", "rect": pygame.Rect(215, 500, 175, 70)},
@@ -89,29 +72,14 @@ class LojaUpgrades:
         ]
 
     def resetar_precos(self):
-        """
-        Restaura os preços iniciais e o estado de compra dos itens para uma nova partida.
-        """
+        """Restaura os preços iniciais e o estado dos upgrades para uma nova partida."""
         self.itens[0]["custo"] = 10
         self.itens[1]["custo"] = 50
         self.itens[2]["custo"] = 200
         self.itens[3]["comprado"] = False
 
-    def tentar_comprar(self, mouse_pos, clique, dinheiro, dano_atual, tem_auto_clique, som_caixa=None):
-        """
-        Processa cliques nos botões da loja, descontando dinheiro e aplicando o upgrade.
-
-        Args:
-            mouse_pos (tuple): Posição atual (x, y) do mouse.
-            clique (bool): Indica se houve clique esquerdo neste frame.
-            dinheiro (int): Saldo atual do jogador.
-            dano_atual (int): Dano atual por golpe.
-            tem_auto_clique (bool): Indica se o Auto-Chute já foi ativado.
-            som_caixa (pygame.mixer.Sound | None): Efeito sonoro de compra.
-
-        Returns:
-            tuple: Novo (dinheiro, dano_atual, tem_auto_clique).
-        """
+    def tentar_comprar(self, mouse_pos, clique, dinheiro, dano_atual, tem_auto_clique, som_compra=None):
+        """Processa a compra de um item caso o jogador clique sobre ele e tenha saldo."""
         for item in self.itens:
             if item["rect"].collidepoint(mouse_pos) and clique:
                 if item["tipo"] == "auto":
@@ -119,26 +87,18 @@ class LojaUpgrades:
                         dinheiro -= item["custo"]
                         item["comprado"] = True
                         tem_auto_clique = True
-                        if som_caixa:
-                            som_caixa.play()
+                        if som_compra:
+                            som_compra.play()
                 elif dinheiro >= item["custo"]:
                     dinheiro -= item["custo"]
                     dano_atual += item["dano"]
                     item["custo"] = int(item["custo"] * 1.5)
-                    if som_caixa:
-                        som_caixa.play()
+                    if som_compra:
+                        som_compra.play()
         return dinheiro, dano_atual, tem_auto_clique
 
     def desenhar(self, tela, mouse_pos, dinheiro, fonte_pequena):
-        """
-        Desenha os botões da loja destacando disponibilidade e foco do cursor.
-
-        Args:
-            tela (pygame.Surface): Superfície principal do jogo.
-            mouse_pos (tuple): Posição atual (x, y) do mouse.
-            dinheiro (int): Saldo atual do jogador.
-            fonte_pequena (FontePixel): Fonte utilizada nos rótulos dos botões.
-        """
+        """Desenha os botões da loja indicando disponibilidade e efeito de hover."""
         for item in self.itens:
             if item["tipo"] == "auto" and item["comprado"]:
                 cor_botao = (0, 160, 0)
@@ -160,14 +120,10 @@ class LojaUpgrades:
 
 
 class FaseLabirinto:
-    """
-    Controla a primeira fase do jogo: fuga em labirinto com inimiga guiada por BFS.
-    """
+    """Controla a primeira fase: fuga em labirinto com inimiga perseguidora (BFS)."""
 
     def __init__(self):
-        """
-        Inicializa o mapa em grade, carrega spritesheets e posiciona os elementos iniciais.
-        """
+        """Inicializa o mapa em grade, carrega spritesheets e posiciona entidades."""
         self.tamanho_bloco = 40
         self.matriz_mapa = [
             "WWWWWWWWWWWWWWWWWWWW",
@@ -212,18 +168,7 @@ class FaseLabirinto:
         self.resetar()
 
     def _carregar_spritesheet(self, caminho, dicionario_destino, colunas_totais=8, linhas_totais=4):
-        """
-        Recorta os quadros de animação de um spritesheet nas 4 direções.
-
-        Args:
-            caminho (str): Caminho do arquivo de imagem.
-            dicionario_destino (dict): Dicionário que receberá as listas de frames.
-            colunas_totais (int): Número total de colunas na imagem.
-            linhas_totais (int): Número total de linhas na imagem.
-
-        Returns:
-            bool: True se carregado com sucesso, False em caso de erro.
-        """
+        """Recorta uma spritesheet em frames direcionais e armazena no dicionário."""
         try:
             sheet = pygame.image.load(caminho).convert_alpha()
             largura_sheet, altura_sheet = sheet.get_size()
@@ -243,9 +188,7 @@ class FaseLabirinto:
             return False
 
     def resetar(self):
-        """
-        Reposiciona jogador, inimiga e notas de dinheiro no estado inicial da fase.
-        """
+        """Reposiciona jogador, inimiga e notas de dinheiro para o início da fase."""
         self.pos_x = 1
         self.pos_y = 1
         self.inimigo_x = 9
@@ -255,13 +198,7 @@ class FaseLabirinto:
         self.dinheiros = [(18, 1), (5, 3), (1, 9), (16, 11), (1, 13)]
 
     def mover_jogador(self, dx, dy):
-        """
-        Move o jogador uma célula na grade caso o destino não seja parede.
-
-        Args:
-            dx (int): Deslocamento horizontal (-1, 0 ou 1).
-            dy (int): Deslocamento vertical (-1, 0 ou 1).
-        """
+        """Move o jogador na grade respeitando colisões com paredes e atualiza animação."""
         if dx == 1:
             self.direcao_atual = 'direita'
         elif dx == -1:
@@ -280,12 +217,7 @@ class FaseLabirinto:
             self.pos_y = novo_y
 
     def checar_dinheiro(self):
-        """
-        Verifica se o jogador pisou em uma nota de dinheiro e retorna o valor ganho.
-
-        Returns:
-            int: Valor coletado (5) ou 0 caso não haja dinheiro na posição.
-        """
+        """Verifica coleta de dinheiro na posição atual e retorna o valor coletado."""
         pos = (self.pos_x, self.pos_y)
         if pos in self.dinheiros:
             self.dinheiros.remove(pos)
@@ -293,9 +225,7 @@ class FaseLabirinto:
         return 0
 
     def mover_inimigo(self):
-        """
-        Calcula o menor caminho até o jogador via Busca em Largura (BFS) e avança 1 célula.
-        """
+        """Calcula o menor caminho até o jogador usando Busca em Largura (BFS) e avança 1 passo."""
         if self.inimigo_x == self.pos_x and self.inimigo_y == self.pos_y:
             return
 
@@ -336,24 +266,15 @@ class FaseLabirinto:
             self.inimigo_x, self.inimigo_y = prox_x, prox_y
 
     def checar_morte(self):
-        """
-        Retorna True se a inimiga alcançou a mesma célula do jogador.
-        """
+        """Retorna True se a inimiga alcançou a mesma célula do jogador."""
         return self.pos_x == self.inimigo_x and self.pos_y == self.inimigo_y
 
     def checar_saida(self):
-        """
-        Retorna True se o jogador alcançou a célula marcada como saída ('E').
-        """
+        """Retorna True se o jogador alcançou a célula de saída ('E') do labirinto."""
         return self.matriz_mapa[self.pos_y][self.pos_x] == 'E'
 
     def desenhar(self, tela):
-        """
-        Desenha paredes, porta de saída, notas de dinheiro, inimiga e jogador.
-
-        Args:
-            tela (pygame.Surface): Superfície principal do jogo.
-        """
+        """Renderiza paredes, saída, coletáveis, inimiga e jogador na tela."""
         for linha_idx, linha in enumerate(self.matriz_mapa):
             for col_idx, celula in enumerate(linha):
                 x = col_idx * self.tamanho_bloco
@@ -396,14 +317,10 @@ class FaseLabirinto:
 
 
 class FaseParkour:
-    """
-    Controla a segunda fase do jogo: plataforma lateral com câmera, gravidade e inimigas.
-    """
+    """Controla a segunda fase: plataforma lateral com gravidade, câmera, vidas e inimigas."""
 
     def __init__(self):
-        """
-        Configura física, cenário com paralaxe, plataformas e sprites laterais.
-        """
+        """Inicializa física, plataformas, fundo com parallax e sprites laterais."""
         self.largura_mapa = 3200
         self.tamanho_sprite = 44
         self.gravidade = 0.7
@@ -450,16 +367,7 @@ class FaseParkour:
         self.resetar("Fácil")
 
     def _carregar_sprites_laterais(self, caminho, destino):
-        """
-        Carrega apenas as linhas laterais (esquerda e direita) de um spritesheet.
-
-        Args:
-            caminho (str): Caminho da imagem.
-            destino (dict): Dicionário com listas para 'esquerda' e 'direita'.
-
-        Returns:
-            bool: True se carregado com sucesso, False caso contrário.
-        """
+        """Carrega os frames de caminhada para esquerda e direita a partir da spritesheet."""
         try:
             sheet = pygame.image.load(caminho).convert_alpha()
             largura_sheet, altura_sheet = sheet.get_size()
@@ -475,12 +383,7 @@ class FaseParkour:
             return False
 
     def resetar(self, dificuldade="Fácil"):
-        """
-        Reinicia vidas, posição do jogador, coletáveis e quantidade de inimigas por dificuldade.
-
-        Args:
-            dificuldade (str): Dificuldade da partida ('Fácil', 'Média' ou 'Difícil').
-        """
+        """Reinicia vidas, posição do jogador, coletáveis e quantidade de inimigas por dificuldade."""
         self.vidas = 3
         self.player_rect = pygame.Rect(60, 420, 34, 44)
         self.vel_y = 0
@@ -529,20 +432,8 @@ class FaseParkour:
                 "anim": 0
             })
 
-    def atualizar(self, teclas, tempo_atual_ms, som_pulo=None, som_moeda=None, som_dano=None):
-        """
-        Atualiza física, colisões, patrulha das inimigas, coleta de dinheiro e câmera.
-
-        Args:
-            teclas (Sequence[bool]): Estado atual das teclas pressionadas.
-            tempo_atual_ms (int): Tempo decorrido em milissegundos (pygame.time.get_ticks).
-            som_pulo (pygame.mixer.Sound | None): Som executado ao pular.
-            som_moeda (pygame.mixer.Sound | None): Som executado ao coletar dinheiro.
-            som_dano (pygame.mixer.Sound | None): Som executado ao perder uma vida.
-
-        Returns:
-            int: Quantidade de dinheiro coletada neste frame.
-        """
+    def atualizar(self, teclas, tempo_atual_ms, som_pulo=None, som_dano=None):
+        """Atualiza física, colisões, patrulha das inimigas, câmera e retorna dinheiro coletado."""
         ganho_dinheiro = 0
         dx = 0
 
@@ -597,15 +488,13 @@ class FaseParkour:
             self.player_rect.topleft = (60, 420)
             self.vel_y = 0
             self.invencivel_ate = tempo_atual_ms + 1500
-            if som_dano:
+            if som_dano and self.vidas > 0:
                 som_dano.play()
 
         for din in self.dinheiros[:]:
             if self.player_rect.colliderect(din):
                 self.dinheiros.remove(din)
                 ganho_dinheiro += 3
-                if som_moeda:
-                    som_moeda.play()
 
         for ini in self.inimigas:
             ini["rect"].x += ini["vel"]
@@ -620,32 +509,22 @@ class FaseParkour:
                 self.vidas -= 1
                 self.invencivel_ate = tempo_atual_ms + 1500
                 self.vel_y = -8
-                if som_dano:
+                if som_dano and self.vidas > 0:
                     som_dano.play()
 
         self.camera_x = max(0, min(self.player_rect.centerx - LARGURA // 2, self.largura_mapa - LARGURA))
         return ganho_dinheiro
 
     def checar_morte(self):
-        """
-        Retorna True quando todas as vidas do jogador acabam.
-        """
+        """Retorna True quando o jogador perde todas as vidas."""
         return self.vidas <= 0
 
     def checar_saida(self):
-        """
-        Retorna True quando o jogador encosta na porta ao final do percurso.
-        """
+        """Retorna True quando o jogador alcança a porta no final do parkour."""
         return self.player_rect.colliderect(self.porta_saida)
 
     def desenhar(self, tela, tempo_atual_ms):
-        """
-        Desenha fundo com efeito paralaxe, plataformas, coletáveis, inimigas e jogador.
-
-        Args:
-            tela (pygame.Surface): Superfície principal do jogo.
-            tempo_atual_ms (int): Tempo atual em ms para piscar durante invencibilidade.
-        """
+        """Desenha o cenário com parallax, plataformas, coletáveis, inimigas e jogador."""
         if self.img_fundo:
             offset = -(int(self.camera_x * 0.4) % LARGURA)
             tela.blit(self.img_fundo, (offset, 0))
