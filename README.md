@@ -21,8 +21,8 @@ Dificuldades:
 - Difícil: 3:15 minutos de limite, 10 inimigos no parkour, porta com 10000 de vida.
 
 Controles
-- Labirinto: `W`, `A`, `S`, `D` ou as setas do teclado.
-- Parkour: `A`/`D` (ou as setas) para andar; `W`, `Espaço` ou a seta para cima para pular.
+- Labirinto: W, A, S, D ou as setas do teclado.
+- Parkour: A/D (ou as setas) para andar; W, Espaço ou a seta para cima para pular.
 - Fase da Porta: clique esquerdo do mouse para bater na porta e comprar upgrades na loja.
 
 Como rodar o jogo
