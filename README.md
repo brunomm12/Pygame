@@ -30,3 +30,6 @@ Ter o Python 3 instalado no computador;
 Instale o pygame dentro da pasta do projeto (pelo terminal) e abra o jogo:
 "pip install pygame";
 "python main.py".
+
+IA:
+Todas as imagens foram feitas por IA, pngs de personagens tambem, a base do código foi feita por IA (o labirinto, as plataformas, e os portais [para ir para a proxima fase], sistema de invunerabilidade, sistema de upgrades, fazer o inimigo seguir o jogado na fase do labirinto)
