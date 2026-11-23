@@ -26,10 +26,12 @@ Controles
 - Fase da Porta: clique esquerdo do mouse para bater na porta e comprar upgrades na loja.
 
 Como rodar o jogo
-Ter o Python 3 instalado no computador;
-Instale o pygame dentro da pasta do projeto (pelo terminal) e abra o jogo:
-"pip install pygame";
-"python main.py".
+Acesse python.org/downloads e baixe o Python 3.12 , 3.13 ou o 3.14
+na primeira tela, marque a caixinha "Add python.exe to PATH" e instale
+Baixe o jogo pelo repositorio do GitHub (clique no botão verde "Code" baixe um .zip e extraia ele)
+Abra o terminal da pasta main.py (control + "'")
+Instale o pygame pelo terminal (pip install pygame)
+Rode o jogo pelo terminal: "python main.py"
 
 IA:
 Todas as imagens foram feitas por IA
